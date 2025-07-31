@@ -1,20 +1,24 @@
-# 核心业务逻辑库
-add_library(cdc_core STATIC
-    # src/motor_controller.cpp
-    # src/sensor_manager.cpp
-    # src/safety_manager.cpp
-    # src/calibration_engine.cpp
+set(CORE_SOURCES
+    src/motor_controller.cpp
+    src/sensor_manager.cpp
+    src/calibration_engine.cpp
+    src/safety_manager.cpp
+    src/data_recorder.cpp
 )
 
-target_link_libraries(cdc_core 
-    PUBLIC 
+set(CORE_HEADERS
+    include/motor_controller.h
+    include/sensor_manager.h
+    include/calibration_engine.h
+    include/safety_manager.h
+    include/data_recorder.h
+)
+
+add_library(core_lib ${CORE_SOURCES} ${CORE_HEADERS})
+target_include_directories(core_lib PUBLIC include)
+target_link_libraries(core_lib
     Qt6::Core
-    cdc_models
-    cdc_hardware
-    cdc_data
-    cdc_utils
-)
-
-target_include_directories(cdc_core PUBLIC
-    include
+    hardware_lib
+    models_lib
+    utils_lib
 )

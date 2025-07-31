@@ -1,8 +1,6 @@
-# 查找Google Test
-find_package(GTest REQUIRED)
+enable_testing()
 
-# SensorData测试
-add_executable(test_sensor_data
+set(TEST_SOURCES
     test_main.cpp
     data_tests/test_sensor_data.cpp
 )

@@ -1,13 +1,13 @@
-# 模型库
-add_library(cdc_models STATIC
+set(MODELS_SOURCES
     src/sensor_data.cpp
-    # 将来添加其他模型文件
-    # src/device_info.cpp
-    # src/motor_status.cpp
 )
 
-target_link_libraries(cdc_models PUBLIC Qt6::Core)
+set(MODELS_HEADERS
+    include/sensor_data.h
+)
 
-target_include_directories(cdc_models PUBLIC
-    include
+add_library(models_lib ${MODELS_SOURCES} ${MODELS_HEADERS})
+target_include_directories(models_lib PUBLIC include)
+target_link_libraries(models_lib
+    Qt6::Core
 )

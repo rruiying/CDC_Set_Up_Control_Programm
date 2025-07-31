@@ -1,0 +1,65 @@
+# Build directories
+build/
+Build/
+debug/
+Debug/
+release/
+Release/
+cmake-build-*/
+
+# Qt Creator files
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user*
+.qmake.cache
+.qmake.stash
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# MOC/UIC/RCC generated files
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+*.moc
+
+# Test results
+test_results/
+*.log
+
+# Runtime data
+runtime/data/logs/*
+runtime/data/exports/*
+runtime/data/temp/*
+!runtime/data/logs/.gitkeep
+!runtime/data/exports/.gitkeep
+!runtime/data/temp/.gitkeep
+
+# Config files (keep templates)
+config.json
+!config.json.template
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documentation build
+docs/build/
+docs/html/
+docs/latex/

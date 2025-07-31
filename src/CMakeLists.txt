@@ -1,7 +1,6 @@
-# 添加所有子目录
+add_subdirectory(app)
+add_subdirectory(core)
+add_subdirectory(data)
+add_subdirectory(hardware)
 add_subdirectory(models)
 add_subdirectory(utils)
-add_subdirectory(hardware)
-add_subdirectory(data)
-add_subdirectory(core)
-add_subdirectory(app)

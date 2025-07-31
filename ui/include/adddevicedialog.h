@@ -1,30 +1,30 @@
-#ifndef ADDDEVICEDIALOG_H
-#define ADDDEVICEDIALOG_H
+#pragma once
 
 #include <QDialog>
 
-QT_BEGIN_NAMESPACE
-namespace Ui { class AddDeviceDialog; }
-QT_END_NAMESPACE
+namespace Ui {
+class AddDeviceDialog;
+}
 
 class AddDeviceDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    AddDeviceDialog(QWidget *parent = nullptr);
+    explicit AddDeviceDialog(QWidget *parent = nullptr);
     ~AddDeviceDialog();
 
+    // 获取用户输入
+    QString getDeviceName() const;
+    QString getPortName() const;
+    int getBaudRate() const;
+
 private slots:
-    void onConfirmClicked();
-    void onCancelClicked();
+    void on_buttonBox_accepted();
+    void on_buttonBox_rejected();
 
 private:
     Ui::AddDeviceDialog *ui;
-
-    QString getDeviceName() const;
-    QString getSerialPort() const;
-    int getBaudRate() const;
+    
+    void updatePortList();
 };
-
-#endif // ADDDEVICEDIALOG_H
