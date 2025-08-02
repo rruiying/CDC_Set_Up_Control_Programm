@@ -1,147 +1,357 @@
-#include "core/include/safety_manager.h"
-#include "utils/include/logger.h"
+// src/core/src/safety_manager.cpp
+#include "../include/safety_manager.h"
+#include "../../models/include/system_config.h"
+#include "../../utils/include/logger.h"
+#include <algorithm>
+#include <sstream>
+#include <cmath>
 
-SafetyManager::SafetyManager(QObject* parent)
-    : QObject(parent)
-    , m_minHeight(0.0f)
-    , m_maxHeight(100.0f)
-    , m_minAngle(-45.0f)
-    , m_maxAngle(45.0f)
-    , m_maxTemperature(50.0f)
-    , m_speedMode(SpeedMode::Medium)
-    , m_emergencyStopped(false)
-{
-    // 从配置加载默认值
-    ConfigManager& config = ConfigManager::instance();
-    m_minHeight = config.getMinHeight();
-    m_maxHeight = config.getMaxHeight();
-    m_minAngle = config.getMinAngle();
-    m_maxAngle = config.getMaxAngle();
+SafetyManager::SafetyManager() {
+    // 从系统配置加载初始限位
+    updateLimitsFromConfig();
+    LOG_INFO("SafetyManager initialized");
 }
 
-SafetyManager::~SafetyManager() {
+bool SafetyManager::checkPosition(double height, double angle) {
+    // 紧急停止状态下，任何位置都不安全
+    if (emergencyStop) {
+        recordViolation("Emergency stop active", height, angle);
+        return false;
+    }
+    
+    // 检查基本限位
+    if (!checkLimits(height, angle)) {
+        std::ostringstream oss;
+        oss << "Position out of limits: height=" << height << "mm, angle=" << angle << "°";
+        recordViolation(oss.str(), height, angle);
+        return false;
+    }
+    
+    // 检查禁止区域
+    if (!checkForbiddenZones(height, angle)) {
+        recordViolation("Position in forbidden zone", height, angle);
+        return false;
+    }
+    
+    return true;
 }
 
-void SafetyManager::setHeightLimits(float min, float max) {
-    if (min < max) {
-        m_minHeight = min;
-        m_maxHeight = max;
-        LOG_INFO(QString("Height limits set: %1 - %2 mm")
-                .arg(min).arg(max));
-    } else {
-        LOG_WARNING("Invalid height limits");
+bool SafetyManager::checkMovement(double fromHeight, double fromAngle,
+                                  double toHeight, double toAngle) {
+    // 检查起点和终点
+    if (!checkPosition(toHeight, toAngle)) {
+        return false;
+    }
+    
+    // 检查移动距离
+    if (!checkMovementDistance(fromHeight, fromAngle, toHeight, toAngle)) {
+        std::ostringstream oss;
+        oss << "Movement distance too large: from (" << fromHeight << "," << fromAngle 
+            << ") to (" << toHeight << "," << toAngle << ")";
+        recordViolation(oss.str(), toHeight, toAngle);
+        return false;
+    }
+    
+    return true;
+}
+
+bool SafetyManager::checkMoveSpeed(double fromHeight, double fromAngle,
+                                   double toHeight, double toAngle, double timeSeconds) {
+    if (timeSeconds <= 0) {
+        return false;
+    }
+    
+    double heightDiff = std::abs(toHeight - fromHeight);
+    double angleDiff = std::abs(toAngle - fromAngle);
+    
+    double heightSpeed = heightDiff / timeSeconds;
+    double angleSpeed = angleDiff / timeSeconds;
+    
+    if (heightSpeed > maxHeightSpeed || angleSpeed > maxAngleSpeed) {
+        std::ostringstream oss;
+        oss << "Move speed too high: " << heightSpeed << "mm/s, " << angleSpeed << "°/s";
+        recordViolation(oss.str(), toHeight, toAngle);
+        return false;
+    }
+    
+    return true;
+}
+
+void SafetyManager::updateLimitsFromConfig() {
+    auto& config = SystemConfig::getInstance();
+    setCustomLimits(config.getMinHeight(), config.getMaxHeight(),
+                   config.getMinAngle(), config.getMaxAngle());
+}
+
+void SafetyManager::setCustomLimits(double minHeight, double maxHeight,
+                                    double minAngle, double maxAngle) {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    minHeightLimit = minHeight;
+    maxHeightLimit = maxHeight;
+    minAngleLimit = minAngle;
+    maxAngleLimit = maxAngle;
+    
+    LOG_INFO_F("Safety limits updated: height[%.1f-%.1f]mm, angle[%.1f-%.1f]°",
+               minHeight, maxHeight, minAngle, maxAngle);
+}
+
+void SafetyManager::getEffectiveLimits(double& minHeight, double& maxHeight,
+                                       double& minAngle, double& maxAngle) const {
+    minHeight = minHeightLimit;
+    maxHeight = maxHeightLimit;
+    minAngle = minAngleLimit;
+    maxAngle = maxAngleLimit;
+    
+    // 应用模式修饰符
+    applyModeModifiers(minHeight, maxHeight, minAngle, maxAngle);
+}
+
+void SafetyManager::setSpeedLimits(double maxHSpeed, double maxASpeed) {
+    maxHeightSpeed = maxHSpeed;
+    maxAngleSpeed = maxASpeed;
+    LOG_INFO_F("Speed limits set: %.1fmm/s, %.1f°/s", maxHSpeed, maxASpeed);
+}
+
+void SafetyManager::setMaxSingleMove(double maxHeight, double maxAngle) {
+    maxSingleMoveHeight = maxHeight;
+    maxSingleMoveAngle = maxAngle;
+}
+
+double SafetyManager::calculateMinimumMoveTime(double fromHeight, double fromAngle,
+                                               double toHeight, double toAngle) const {
+    double heightDiff = std::abs(toHeight - fromHeight);
+    double angleDiff = std::abs(toAngle - fromAngle);
+    
+    double heightTime = heightDiff / maxHeightSpeed;
+    double angleTime = angleDiff / maxAngleSpeed;
+    
+    return std::max(heightTime, angleTime);
+}
+
+void SafetyManager::triggerEmergencyStop(const std::string& reason) {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        emergencyStop = true;
+        emergencyStopReason = reason;
+    }
+    
+    LOG_ERROR("Emergency stop triggered: " + reason);
+    notifyEmergencyStop(true);
+}
+
+void SafetyManager::clearEmergencyStop() {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        emergencyStop = false;
+        emergencyStopReason.clear();
+    }
+    
+    LOG_INFO("Emergency stop cleared");
+    notifyEmergencyStop(false);
+}
+
+std::string SafetyManager::getEmergencyStopReason() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return emergencyStopReason;
+}
+
+void SafetyManager::addForbiddenZone(double minHeight, double maxHeight,
+                                     double minAngle, double maxAngle,
+                                     const std::string& description) {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    ForbiddenZone zone{minHeight, maxHeight, minAngle, maxAngle, description};
+    forbiddenZones.push_back(zone);
+    
+    LOG_INFO_F("Forbidden zone added: height[%.1f-%.1f]mm, angle[%.1f-%.1f]°",
+               minHeight, maxHeight, minAngle, maxAngle);
+}
+
+void SafetyManager::removeForbiddenZone(size_t index) {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    if (index < forbiddenZones.size()) {
+        forbiddenZones.erase(forbiddenZones.begin() + index);
+        LOG_INFO_F("Forbidden zone %zu removed", index);
     }
 }
 
-void SafetyManager::setAngleLimits(float min, float max) {
-    if (min < max) {
-        m_minAngle = min;
-        m_maxAngle = max;
-        LOG_INFO(QString("Angle limits set: %1 - %2 degrees")
-                .arg(min).arg(max));
-    } else {
-        LOG_WARNING("Invalid angle limits");
+void SafetyManager::clearForbiddenZones() {
+    std::lock_guard<std::mutex> lock(mutex);
+    forbiddenZones.clear();
+    LOG_INFO("All forbidden zones cleared");
+}
+
+std::vector<ForbiddenZone> SafetyManager::getForbiddenZones() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return forbiddenZones;
+}
+
+void SafetyManager::setSafetyMode(SafetyMode mode) {
+    safetyMode = mode;
+    LOG_INFO_F("Safety mode set to: %d", static_cast<int>(mode));
+}
+
+void SafetyManager::setCurrentPosition(double height, double angle) {
+    currentHeight = height;
+    currentAngle = angle;
+}
+
+void SafetyManager::getCurrentPosition(double& height, double& angle) const {
+    height = currentHeight;
+    angle = currentAngle;
+}
+
+int SafetyManager::getViolationCount() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return static_cast<int>(violations.size());
+}
+
+std::vector<SafetyViolation> SafetyManager::getViolationHistory() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return violations;
+}
+
+void SafetyManager::clearViolationHistory() {
+    std::lock_guard<std::mutex> lock(mutex);
+    violations.clear();
+}
+
+void SafetyManager::setViolationCallback(ViolationCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    violationCallback = callback;
+}
+
+void SafetyManager::setEmergencyStopCallback(EmergencyStopCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    emergencyStopCallback = callback;
+}
+
+std::string SafetyManager::getSafetyStatus() const {
+    std::ostringstream oss;
+    
+    oss << "Safety Status:\n";
+    oss << "  Mode: ";
+    switch (safetyMode.load()) {
+        case SafetyMode::NORMAL: oss << "NORMAL"; break;
+        case SafetyMode::RESTRICTED: oss << "RESTRICTED"; break;
+        case SafetyMode::MAINTENANCE: oss << "MAINTENANCE"; break;
     }
+    oss << "\n";
+    
+    oss << "  Emergency Stop: " << (emergencyStop ? "ACTIVE" : "INACTIVE") << "\n";
+    
+    double minH, maxH, minA, maxA;
+    getEffectiveLimits(minH, maxH, minA, maxA);
+    oss << "  Effective Limits: Height[" << minH << "-" << maxH << "]mm, ";
+    oss << "Angle[" << minA << "-" << maxA << "]°\n";
+    
+    oss << "  Forbidden Zones: " << forbiddenZones.size() << "\n";
+    oss << "  Violations: " << violations.size();
+    
+    return oss.str();
 }
 
-void SafetyManager::setSpeedMode(SpeedMode mode) {
-    m_speedMode = mode;
-    LOG_INFO(QString("Speed mode set to: %1").arg(static_cast<int>(mode)));
+// 私有方法实现
+
+bool SafetyManager::checkLimits(double height, double angle) const {
+    double minH, maxH, minA, maxA;
+    getEffectiveLimits(minH, maxH, minA, maxA);
+    
+    return height >= minH && height <= maxH &&
+           angle >= minA && angle <= maxA;
 }
 
-bool SafetyManager::isHeightSafe(float height) const {
-    bool safe = (height >= m_minHeight && height <= m_maxHeight);
-    if (!safe) {
-        const_cast<SafetyManager*>(this)->emit limitViolation(
-            QString("Height %1mm is outside safe range [%2, %3]")
-            .arg(height).arg(m_minHeight).arg(m_maxHeight));
-    }
-    return safe;
-}
-
-bool SafetyManager::isAngleSafe(float angle) const {
-    bool safe = (angle >= m_minAngle && angle <= m_maxAngle);
-    if (!safe) {
-        const_cast<SafetyManager*>(this)->emit limitViolation(
-            QString("Angle %1° is outside safe range [%2, %3]")
-            .arg(angle).arg(m_minAngle).arg(m_maxAngle));
-    }
-    return safe;
-}
-
-bool SafetyManager::isSpeedSafe(float speed) const {
-    return speed >= 0 && speed <= getMaxSpeed();
-}
-
-float SafetyManager::getMaxSpeed() const {
-    switch (m_speedMode) {
-        case SpeedMode::Slow:
-            return SPEED_SLOW;
-        case SpeedMode::Medium:
-            return SPEED_MEDIUM;
-        case SpeedMode::Fast:
-            return SPEED_FAST;
-        default:
-            return SPEED_MEDIUM;
-    }
-}
-
-bool SafetyManager::isSensorDataValid(const SensorData& data) const {
-    // 检查距离传感器
-    auto checkDistance = [this](float dist, const QString& name) {
-        if (dist < MIN_DISTANCE || dist > MAX_DISTANCE) {
-            const_cast<SafetyManager*>(this)->emit safetyWarning(
-                QString("%1 value %2mm is out of range")
-                .arg(name).arg(dist));
+bool SafetyManager::checkForbiddenZones(double height, double angle) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    for (const auto& zone : forbiddenZones) {
+        if (height >= zone.minHeight && height <= zone.maxHeight &&
+            angle >= zone.minAngle && angle <= zone.maxAngle) {
             return false;
         }
-        return true;
-    };
-    
-    if (!checkDistance(data.distanceUpper1, "Upper distance 1")) return false;
-    if (!checkDistance(data.distanceUpper2, "Upper distance 2")) return false;
-    if (!checkDistance(data.distanceLower1, "Lower distance 1")) return false;
-    if (!checkDistance(data.distanceLower2, "Lower distance 2")) return false;
-    
-    // 检查温度
-    if (data.temperature < MIN_TEMPERATURE || 
-        data.temperature > MAX_TEMPERATURE_NORMAL) {
-        emit safetyWarning(QString("Temperature %1°C is abnormal")
-                          .arg(data.temperature));
-        return false;
     }
     
     return true;
 }
 
-bool SafetyManager::isMovementAllowed() const {
-    if (m_emergencyStopped) {
-        LOG_WARNING("Movement blocked: Emergency stop active");
-        return false;
-    }
-    return true;
-}
-
-bool SafetyManager::validateMovementRequest(const MovementRequest& request) const {
-    if (!isMovementAllowed()) return false;
-    if (!isHeightSafe(request.targetHeight)) return false;
-    if (!isAngleSafe(request.targetAngle)) return false;
-    if (!isSpeedSafe(request.speed)) return false;
+bool SafetyManager::checkMovementDistance(double fromHeight, double fromAngle,
+                                         double toHeight, double toAngle) const {
+    double heightDiff = std::abs(toHeight - fromHeight);
+    double angleDiff = std::abs(toAngle - fromAngle);
     
-    return true;
+    return heightDiff <= maxSingleMoveHeight && angleDiff <= maxSingleMoveAngle;
 }
 
-void SafetyManager::triggerEmergencyStop() {
-    m_emergencyStopped = true;
-    LOG_ERROR("EMERGENCY STOP TRIGGERED!");
-    emit emergencyStopTriggered();
+void SafetyManager::recordViolation(const std::string& reason, double height, double angle) {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        
+        SafetyViolation violation{getCurrentTimestamp(), reason, height, angle};
+        violations.push_back(violation);
+        
+        // 限制历史大小
+        while (violations.size() > maxViolationHistory) {
+            violations.erase(violations.begin());
+        }
+    }
+    
+    LOG_WARNING("Safety violation: " + reason);
+    notifyViolation(reason);
 }
 
-void SafetyManager::resetEmergencyStop() {
-    m_emergencyStopped = false;
-    LOG_INFO("Emergency stop reset");
+void SafetyManager::notifyViolation(const std::string& reason) {
+    if (violationCallback) {
+        std::thread([this, reason]() {
+            violationCallback(reason);
+        }).detach();
+    }
 }
 
-bool SafetyManager::isEmergencyStopped() const {
-    return m_emergencyStopped;
+void SafetyManager::notifyEmergencyStop(bool stopped) {
+    if (emergencyStopCallback) {
+        std::thread([this, stopped]() {
+            emergencyStopCallback(stopped);
+        }).detach();
+    }
+}
+
+void SafetyManager::applyModeModifiers(double& minHeight, double& maxHeight,
+                                       double& minAngle, double& maxAngle) const {
+    double heightRange = maxHeight - minHeight;
+    double angleRange = maxAngle - minAngle;
+    double heightCenter = (maxHeight + minHeight) / 2.0;
+    double angleCenter = (maxAngle + minAngle) / 2.0;
+    
+    switch (safetyMode.load()) {
+        case SafetyMode::RESTRICTED:
+            // 减少范围
+            heightRange *= RESTRICTED_MODE_FACTOR;
+            angleRange *= RESTRICTED_MODE_FACTOR;
+            break;
+            
+        case SafetyMode::MAINTENANCE:
+            // 增加范围
+            heightRange *= MAINTENANCE_MODE_FACTOR;
+            angleRange *= MAINTENANCE_MODE_FACTOR;
+            break;
+            
+        case SafetyMode::NORMAL:
+        default:
+            // 保持不变
+            break;
+    }
+    
+    minHeight = heightCenter - heightRange / 2.0;
+    maxHeight = heightCenter + heightRange / 2.0;
+    minAngle = angleCenter - angleRange / 2.0;
+    maxAngle = angleCenter + angleRange / 2.0;
+}
+
+int64_t SafetyManager::getCurrentTimestamp() const {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto duration = now.time_since_epoch();
+    return duration_cast<milliseconds>(duration).count();
 }

@@ -1,224 +1,364 @@
-#include "core/include/sensor_manager.h"
-#include "hardware/include/sensor_interface.h"
-#include "utils/include/logger.h"
-#include "utils/include/math_utils.h"
-#include "utils/include/config_manager.h"
+// src/core/src/sensor_manager.cpp
+#include "../include/sensor_manager.h"
+#include "../../hardware/include/serial_interface.h"
+#include "../../hardware/include/command_protocol.h"
+#include "../../models/include/system_config.h"
+#include "../../utils/include/logger.h"
+#include <algorithm>
+#include <numeric>
+#include <cmath>
 
-SensorManager::SensorManager(SensorInterface* sensorInterface, QObject* parent)
-    : QObject(parent)
-    , m_sensorInterface(sensorInterface)
-    , m_statsTimer(new QTimer(this))
-    , m_maxHistorySize(10000)
-    , m_filterEnabled(true)
-    , m_isMonitoring(false)
-{
-    if (m_sensorInterface) {
-        connect(m_sensorInterface, &SensorInterface::sensorDataReceived,
-                this, &SensorManager::onSensorDataReceived);
-    }
+SensorManager::SensorManager(std::shared_ptr<SerialInterface> serialInterface)
+    : serial(serialInterface) {
+    // 从系统配置获取默认更新间隔
+    updateInterval = SystemConfig::getInstance().getSensorUpdateInterval();
     
-    // 统计更新定时器
-    connect(m_statsTimer, &QTimer::timeout,
-            this, &SensorManager::updateStatistics);
-    m_statsTimer->start(1000); // 每秒更新统计
-    
-    // 初始化统计
-    m_statistics = Statistics{};
-    m_statistics.startTime = QDateTime::currentDateTime();
+    LOG_INFO("SensorManager initialized with update interval: " + std::to_string(updateInterval.load()) + "ms");
 }
 
 SensorManager::~SensorManager() {
-    stopMonitoring();
+    stop();
 }
 
-void SensorManager::startMonitoring(int intervalMs) {
-    if (m_sensorInterface) {
-        m_sensorInterface->startPolling(intervalMs);
-        m_isMonitoring = true;
-        LOG_INFO(QString("Sensor monitoring started at %1ms interval").arg(intervalMs));
+bool SensorManager::start() {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    if (running) {
+        LOG_WARNING("SensorManager already running");
+        return false;
+    }
+    
+    if (!serial || !serial->isOpen()) {
+        LOG_ERROR("Cannot start SensorManager: serial port not open");
+        return false;
+    }
+    
+    running = true;
+    stopRequested = false;
+    paused = false;
+    
+    // 启动更新线程
+    updateThreadPtr = std::make_unique<std::thread>(&SensorManager::updateThread, this);
+    
+    LOG_INFO("SensorManager started");
+    return true;
+}
+
+void SensorManager::stop() {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!running) {
+            return;
+        }
+        
+        stopRequested = true;
+        cv.notify_all();
+    }
+    
+    // 等待线程结束
+    if (updateThreadPtr && updateThreadPtr->joinable()) {
+        updateThreadPtr->join();
+    }
+    
+    running = false;
+    LOG_INFO("SensorManager stopped");
+}
+
+void SensorManager::pause() {
+    std::lock_guard<std::mutex> lock(mutex);
+    paused = true;
+    LOG_INFO("SensorManager paused");
+}
+
+void SensorManager::resume() {
+    std::lock_guard<std::mutex> lock(mutex);
+    paused = false;
+    cv.notify_all();
+    LOG_INFO("SensorManager resumed");
+}
+
+bool SensorManager::readSensorsOnce() {
+    auto startTime = getCurrentTimestamp();
+    bool success = performRead();
+    auto readTime = getCurrentTimestamp() - startTime;
+    
+    updateStatistics(success, readTime);
+    
+    return success;
+}
+
+bool SensorManager::hasValidData() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return hasData && latestData.isValid();
+}
+
+SensorData SensorManager::getLatestData() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return latestData;
+}
+
+std::vector<SensorData> SensorManager::getDataHistory() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return std::vector<SensorData>(dataHistory.begin(), dataHistory.end());
+}
+
+SensorData SensorManager::getAverageData(size_t count) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    if (dataHistory.empty()) {
+        return SensorData();
+    }
+    
+    // 限制计数
+    count = std::min(count, dataHistory.size());
+    
+    // 计算平均值
+    double sumUpper1 = 0, sumUpper2 = 0;
+    double sumLower1 = 0, sumLower2 = 0;
+    double sumTemp = 0, sumAngle = 0, sumCap = 0;
+    
+    auto it = dataHistory.rbegin();
+    for (size_t i = 0; i < count && it != dataHistory.rend(); ++i, ++it) {
+        sumUpper1 += it->getUpperSensor1();
+        sumUpper2 += it->getUpperSensor2();
+        sumLower1 += it->getLowerSensor1();
+        sumLower2 += it->getLowerSensor2();
+        sumTemp += it->getTemperature();
+        sumAngle += it->getMeasuredAngle();
+        sumCap += it->getMeasuredCapacitance();
+    }
+    
+    return SensorData(
+        sumUpper1 / count, sumUpper2 / count,
+        sumLower1 / count, sumLower2 / count,
+        sumTemp / count, sumAngle / count, sumCap / count
+    );
+}
+
+void SensorManager::setUpdateInterval(int intervalMs) {
+    updateInterval = intervalMs;
+    cv.notify_all(); // 通知线程更新间隔已改变
+    LOG_INFO_F("Update interval set to %d ms", intervalMs);
+}
+
+void SensorManager::setHistorySize(size_t size) {
+    std::lock_guard<std::mutex> lock(mutex);
+    maxHistorySize = size;
+    
+    // 如果当前历史超过新大小，删除旧数据
+    while (dataHistory.size() > maxHistorySize) {
+        dataHistory.pop_front();
     }
 }
 
-void SensorManager::stopMonitoring() {
-    if (m_sensorInterface) {
-        m_sensorInterface->stopPolling();
-        m_isMonitoring = false;
-        LOG_INFO("Sensor monitoring stopped");
+void SensorManager::setDataCallback(DataCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    dataCallback = callback;
+}
+
+void SensorManager::setErrorCallback(ErrorCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    errorCallback = callback;
+}
+
+SensorStatistics SensorManager::getStatistics() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    // 计算成功率
+    if (statistics.totalReads > 0) {
+        statistics.successRate = (double)statistics.successfulReads / statistics.totalReads * 100.0;
+        statistics.averageReadTime = (double)statistics.totalReadTime / statistics.totalReads;
+    }
+    
+    return statistics;
+}
+
+void SensorManager::resetStatistics() {
+    std::lock_guard<std::mutex> lock(mutex);
+    statistics = SensorStatistics();
+}
+
+void SensorManager::reset() {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    hasData = false;
+    latestData = SensorData();
+    dataHistory.clear();
+    statistics = SensorStatistics();
+    
+    LOG_INFO("SensorManager reset");
+}
+
+// 私有方法实现
+
+void SensorManager::updateThread() {
+    LOG_INFO("Sensor update thread started");
+    
+    while (!stopRequested) {
+        std::unique_lock<std::mutex> lock(mutex);
+        
+        // 等待更新间隔或停止信号
+        cv.wait_for(lock, std::chrono::milliseconds(updateInterval.load()),
+                    [this] { return stopRequested.load(); });
+        
+        if (stopRequested) {
+            break;
+        }
+        
+        if (paused) {
+            continue;
+        }
+        
+        lock.unlock();
+        
+        // 执行读取
+        readSensorsOnce();
+    }
+    
+    LOG_INFO("Sensor update thread stopped");
+}
+
+bool SensorManager::performRead() {
+    if (!serial || !serial->isOpen()) {
+        notifyError("Serial port not open");
+        return false;
+    }
+    
+    try {
+        // 发送获取传感器命令
+        std::string command = CommandProtocol::buildGetSensorsCommand();
+        std::string response = serial->sendAndReceive(command, readTimeout);
+        
+        if (response.empty()) {
+            notifyError("Timeout reading sensors");
+            return false;
+        }
+        
+        // 解析响应
+        CommandResponse cmdResponse = CommandProtocol::parseResponse(response);
+        
+        if (cmdResponse.type == ResponseType::SENSOR_DATA && cmdResponse.sensorData.has_value()) {
+            SensorData newData = cmdResponse.sensorData.value();
+            
+            // 验证数据
+            if (!isDataValid(newData)) {
+                notifyError("Invalid sensor data received");
+                return false;
+            }
+            
+            // 检查是否需要过滤
+            if (filteringEnabled && hasData && shouldFilterData(newData)) {
+                LOG_WARNING("Sensor data filtered due to large change");
+                notifyError("Sensor data filtered");
+                return false;
+            }
+            
+            // 处理新数据
+            processNewData(newData);
+            return true;
+            
+        } else if (cmdResponse.type == ResponseType::ERROR) {
+            notifyError("Sensor error: " + cmdResponse.errorMessage);
+            return false;
+        } else {
+            notifyError("Unexpected response type");
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        notifyError(std::string("Exception reading sensors: ") + e.what());
+        return false;
     }
 }
 
-bool SensorManager::isMonitoring() const {
-    return m_isMonitoring;
-}
-
-SensorData SensorManager::getCurrentData() const {
-    return m_currentData;
-}
-
-QList<SensorData> SensorManager::getDataHistory(int maxPoints) const {
-    QList<SensorData> history;
-    int count = std::min(maxPoints, m_dataHistory.size());
+void SensorManager::processNewData(const SensorData& data) {
+    std::lock_guard<std::mutex> lock(mutex);
     
-    // 从队列末尾开始取数据（最新的）
-    for (int i = m_dataHistory.size() - count; i < m_dataHistory.size(); ++i) {
-        history.append(m_dataHistory.at(i));
-    }
-    
-    return history;
-}
-
-SensorManager::Statistics SensorManager::getStatistics() const {
-    return m_statistics;
-}
-
-void SensorManager::processSensorData(const SensorData& data) {
-    // 计算衍生值
-    SensorData processedData = data;
-    calculateDerivedValues(processedData);
-    
-    // 应用滤波
-    if (m_filterEnabled) {
-        processedData = filterData(processedData);
-    }
-    
-    // 检测异常
-    detectAnomalies(processedData);
-    
-    // 更新当前数据
-    m_currentData = processedData;
+    // 更新最新数据
+    latestData = data;
+    hasData = true;
     
     // 添加到历史
-    m_dataHistory.enqueue(processedData);
-    if (m_dataHistory.size() > m_maxHistorySize) {
-        m_dataHistory.dequeue();
+    dataHistory.push_back(data);
+    
+    // 限制历史大小
+    while (dataHistory.size() > maxHistorySize) {
+        dataHistory.pop_front();
     }
     
-    // 发送更新信号
-    emit dataUpdated(processedData);
-}
-
-void SensorManager::clearHistory() {
-    m_dataHistory.clear();
-    m_statistics = Statistics{};
-    m_statistics.startTime = QDateTime::currentDateTime();
-    LOG_INFO("Sensor data history cleared");
-}
-
-void SensorManager::setHistorySize(int size) {
-    m_maxHistorySize = size;
+    // 通知回调
+    notifyDataReceived(data);
     
-    // 如果当前历史超过新大小，裁剪
-    while (m_dataHistory.size() > m_maxHistorySize) {
-        m_dataHistory.dequeue();
+    LOG_INFO_F("Sensor data updated: Upper[%.1f,%.1f] Lower[%.1f,%.1f] Temp:%.1f°C Angle:%.1f° Cap:%.1fpF",
+               data.getUpperSensor1(), data.getUpperSensor2(),
+               data.getLowerSensor1(), data.getLowerSensor2(),
+               data.getTemperature(), data.getMeasuredAngle(),
+               data.getMeasuredCapacitance());
+}
+
+bool SensorManager::isDataValid(const SensorData& data) const {
+    // 使用SensorData自己的验证
+    return data.isValid();
+}
+
+bool SensorManager::shouldFilterData(const SensorData& newData) const {
+    if (!hasData) {
+        return false;
+    }
+    
+    // 计算与上次数据的变化百分比
+    auto calculateChange = [](double oldVal, double newVal) -> double {
+        if (std::abs(oldVal) < 0.001) {
+            return std::abs(newVal) > filterThreshold ? 100.0 : 0.0;
+        }
+        return std::abs((newVal - oldVal) / oldVal) * 100.0;
+    };
+    
+    // 检查各个传感器的变化
+    double changeUpper1 = calculateChange(latestData.getUpperSensor1(), newData.getUpperSensor1());
+    double changeUpper2 = calculateChange(latestData.getUpperSensor2(), newData.getUpperSensor2());
+    
+    // 如果任何传感器变化超过阈值，过滤数据
+    return changeUpper1 > filterThreshold || changeUpper2 > filterThreshold;
+}
+
+void SensorManager::updateStatistics(bool success, int64_t readTime) {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    statistics.totalReads++;
+    statistics.totalReadTime += readTime;
+    statistics.lastReadTime = getCurrentTimestamp();
+    
+    if (success) {
+        statistics.successfulReads++;
+    } else {
+        statistics.failedReads++;
     }
 }
 
-void SensorManager::setDataFilter(bool enable) {
-    m_filterEnabled = enable;
-    LOG_INFO(QString("Data filtering %1").arg(enable ? "enabled" : "disabled"));
+void SensorManager::notifyDataReceived(const SensorData& data) {
+    if (dataCallback) {
+        // 在锁外调用回调，避免死锁
+        std::thread([this, data]() {
+            dataCallback(data);
+        }).detach();
+    }
 }
 
-void SensorManager::onSensorDataReceived(const SensorData& data) {
-    processSensorData(data);
+void SensorManager::notifyError(const std::string& error) {
+    LOG_ERROR("SensorManager error: " + error);
+    
+    if (errorCallback) {
+        // 在锁外调用回调
+        std::thread([this, error]() {
+            errorCallback(error);
+        }).detach();
+    }
 }
 
-void SensorManager::updateStatistics() {
-    if (m_dataHistory.isEmpty()) return;
-    
-    float sumTemp = 0, sumHeight = 0, sumAngle = 0, sumCap = 0;
-    int validTemp = 0, validHeight = 0, validAngle = 0, validCap = 0;
-    
-    for (const auto& data : m_dataHistory) {
-        if (data.isValid.temperature) {
-            sumTemp += data.temperature;
-            validTemp++;
-        }
-        if (data.isValid.distanceUpper1 && data.isValid.distanceUpper2) {
-            sumHeight += (data.distanceUpper1 + data.distanceUpper2) / 2.0f;
-            validHeight++;
-        }
-        if (data.isValid.angle) {
-            sumAngle += data.angle;
-            validAngle++;
-        }
-        if (data.isValid.capacitance) {
-            sumCap += data.capacitance;
-            validCap++;
-        }
-    }
-    
-    m_statistics.avgTemperature = validTemp > 0 ? sumTemp / validTemp : 0;
-    m_statistics.avgHeight = validHeight > 0 ? sumHeight / validHeight : 0;
-    m_statistics.avgAngle = validAngle > 0 ? sumAngle / validAngle : 0;
-    m_statistics.avgCapacitance = validCap > 0 ? sumCap / validCap : 0;
-    m_statistics.dataPoints = m_dataHistory.size();
-    m_statistics.lastUpdate = QDateTime::currentDateTime();
-    
-    emit statisticsUpdated(m_statistics);
-}
-
-SensorData SensorManager::filterData(const SensorData& data) {
-    SensorData filtered = data;
-    
-    // 简单的指数平滑滤波
-    const float alpha = 0.3f;
-    
-    if (!m_dataHistory.isEmpty()) {
-        const SensorData& prev = m_dataHistory.last();
-        
-        if (data.isValid.temperature && prev.isValid.temperature) {
-            filtered.temperature = MathUtils::exponentialSmooth(
-                prev.temperature, data.temperature, alpha);
-        }
-        
-        if (data.isValid.distanceUpper1 && prev.isValid.distanceUpper1) {
-            filtered.distanceUpper1 = MathUtils::exponentialSmooth(
-                prev.distanceUpper1, data.distanceUpper1, alpha);
-        }
-        
-        // 对其他传感器数据应用相同的滤波
-    }
-    
-    return filtered;
-}
-
-void SensorManager::detectAnomalies(const SensorData& data) {
-    // 温度异常检测
-    if (data.isValid.temperature) {
-        if (data.temperature > 60.0f) {
-            emit dataAnomalyDetected(
-                QString("High temperature detected: %1°C").arg(data.temperature));
-        }
-        else if (data.temperature < -10.0f) {
-            emit dataAnomalyDetected(
-                QString("Low temperature detected: %1°C").arg(data.temperature));
-        }
-    }
-    
-    // 距离传感器异常检测
-    if (data.isValid.distanceUpper1 && data.isValid.distanceUpper2) {
-        float diff = std::abs(data.distanceUpper1 - data.distanceUpper2);
-        if (diff > 50.0f) {
-            emit dataAnomalyDetected(
-                QString("Large distance difference detected: %1mm").arg(diff));
-        }
-    }
-    
-    // 可以添加更多异常检测逻辑
-}
-
-void SensorManager::calculateDerivedValues(SensorData& data) {
-    ConfigManager& config = ConfigManager::instance();
-    
-    // 计算平均高度
-    if (data.isValid.distanceUpper1 && data.isValid.distanceUpper2) {
-        data.calculatedHeight = (data.distanceUpper1 + data.distanceUpper2) / 2.0f;
-    }
-    
-    // 通过两个距离传感器计算角度
-    if (data.isValid.distanceUpper1 && data.isValid.distanceUpper2) {
-        float sensorSpacing = config.getSensorSpacing();
-        data.calculatedAngle = MathUtils::calculateAngle(
-            data.distanceUpper1, data.distanceUpper2, sensorSpacing);
-    }
+int64_t SensorManager::getCurrentTimestamp() const {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto duration = now.time_since_epoch();
+    return duration_cast<milliseconds>(duration).count();
 }

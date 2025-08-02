@@ -1,24 +1,29 @@
-set(CORE_SOURCES
-    src/motor_controller.cpp
+# src/core/CMakeLists.txt
+cmake_minimum_required(VERSION 3.16)
+
+# 创建core库
+add_library(core STATIC
     src/sensor_manager.cpp
-    src/calibration_engine.cpp
+    src/motor_controller.cpp
     src/safety_manager.cpp
     src/data_recorder.cpp
 )
 
-set(CORE_HEADERS
-    include/motor_controller.h
-    include/sensor_manager.h
-    include/calibration_engine.h
-    include/safety_manager.h
-    include/data_recorder.h
+target_include_directories(core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-add_library(core_lib ${CORE_SOURCES} ${CORE_HEADERS})
-target_include_directories(core_lib PUBLIC include)
-target_link_libraries(core_lib
-    Qt6::Core
-    hardware_lib
-    models_lib
-    utils_lib
+# 设置C++标准
+target_compile_features(core PUBLIC cxx_std_17)
+
+# 链接依赖的库
+target_link_libraries(core PUBLIC
+    hardware
+    models
+    utils
 )
+
+# 如果是Windows平台，定义M_PI
+if(WIN32)
+    target_compile_definitions(core PRIVATE _USE_MATH_DEFINES)
+endif()

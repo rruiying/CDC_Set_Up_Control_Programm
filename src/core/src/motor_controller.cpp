@@ -1,250 +1,440 @@
-#include "core/include/motor_controller.h"
-#include "core/include/safety_manager.h"
-#include "hardware/include/motor_interface.h"
-#include "utils/include/logger.h"
-#include "utils/include/math_utils.h"
+// src/core/src/motor_controller.cpp
+#include "../include/motor_controller.h"
+#include "../include/safety_manager.h"
+#include "../../hardware/include/serial_interface.h"
+#include "../../hardware/include/command_protocol.h"
+#include "../../utils/include/logger.h"
+#include <sstream>
+#include <cmath>
 
-MotorController::MotorController(MotorInterface* motorInterface,
-                               SafetyManager* safetyManager,
-                               QObject* parent)
-    : QObject(parent)
-    , m_motorInterface(motorInterface)
-    , m_safetyManager(safetyManager)
-    , m_statusTimer(new QTimer(this))
-    , m_controlMode(ControlMode::Manual)
-    , m_targetHeight(0.0f)
-    , m_targetAngle(0.0f)
-    , m_currentHeight(0.0f)
-    , m_currentAngle(0.0f)
-    , m_isMoving(false)
-    , m_isStopped(true)
-{
-    // 状态更新定时器
-    connect(m_statusTimer, &QTimer::timeout,
-            this, &MotorController::updateStatus);
-    m_statusTimer->start(100); // 100ms更新一次
+MotorController::MotorController(std::shared_ptr<SerialInterface> serialInterface,
+                                 std::shared_ptr<SafetyManager> safetyManager)
+    : serial(serialInterface), safety(safetyManager) {
     
-    // 连接安全管理器
-    if (m_safetyManager) {
-        connect(m_safetyManager, &SafetyManager::limitViolation,
-                this, &MotorController::onSafetyViolation);
-        connect(m_safetyManager, &SafetyManager::emergencyStopTriggered,
-                this, &MotorController::emergencyStop);
-    }
+    // 从系统配置加载速度设置
+    speed = SystemConfig::getInstance().getMotorSpeed();
     
-    // 初始化状态
-    m_status.isConnected = false;
-    m_status.isMoving = false;
-    m_status.currentHeight = 0.0f;
-    m_status.currentAngle = 0.0f;
-    m_status.targetHeight = 0.0f;
-    m_status.targetAngle = 0.0f;
+    LOG_INFO("MotorController initialized");
 }
 
 MotorController::~MotorController() {
-    stop();
+    // 停止监控线程
+    stopMonitoring = true;
+    if (monitorThread && monitorThread->joinable()) {
+        monitorThread->join();
+    }
 }
 
-bool MotorController::moveToPosition(float height, float angle) {
-    if (!validateMovement(height, angle)) {
+bool MotorController::setHeight(double height) {
+    // 安全检查
+    if (!checkSafety(height, currentAngle)) {
+        notifyError("Height out of safety limits", ErrorCode::OUT_OF_RANGE);
         return false;
     }
     
-    m_targetHeight = height;
-    m_targetAngle = angle;
-    
-    bool heightOk = true;
-    bool angleOk = true;
-    
-    // 发送运动命令
-    if (m_motorInterface) {
-        if (std::abs(height - m_currentHeight) > 0.1f) {
-            heightOk = m_motorInterface->setHeight(height);
-        }
-        
-        if (std::abs(angle - m_currentAngle) > 0.1f) {
-            angleOk = m_motorInterface->setAngle(angle);
-        }
-    }
-    
-    if (heightOk && angleOk) {
-        m_isMoving = true;
-        m_isStopped = false;
-        emit movementStarted();
-        LOG_INFO(QString("Movement started to H:%1mm, A:%2°")
-                .arg(height).arg(angle));
+    std::string command = CommandProtocol::buildSetHeightCommand(height);
+    if (sendCommandAndWait(command)) {
+        targetHeight = height;
+        LOG_INFO_F("Height set to %.1f mm", height);
         return true;
-    } else {
-        emit movementFailed("Failed to send motor commands");
-        return false;
-    }
-}
-
-bool MotorController::setHeight(float height) {
-    return moveToPosition(height, m_currentAngle);
-}
-
-bool MotorController::setAngle(float angle) {
-    return moveToPosition(m_currentHeight, angle);
-}
-
-bool MotorController::setSpeed(float speed) {
-    if (!m_safetyManager || !m_safetyManager->isSpeedSafe(speed)) {
-        LOG_WARNING(QString("Speed %1 is not safe").arg(speed));
-        return false;
-    }
-    
-    if (m_motorInterface) {
-        return m_motorInterface->setSpeed(speed);
     }
     
     return false;
+}
+
+bool MotorController::setAngle(double angle) {
+    // 安全检查
+    if (!checkSafety(currentHeight, angle)) {
+        notifyError("Angle out of safety limits", ErrorCode::OUT_OF_RANGE);
+        return false;
+    }
+    
+    std::string command = CommandProtocol::buildSetAngleCommand(angle);
+    if (sendCommandAndWait(command)) {
+        targetAngle = angle;
+        LOG_INFO_F("Angle set to %.1f degrees", angle);
+        return true;
+    }
+    
+    return false;
+}
+
+bool MotorController::moveToPosition(double height, double angle) {
+    // 安全检查
+    if (!checkSafety(height, angle)) {
+        notifyError("Position out of safety limits", ErrorCode::OUT_OF_RANGE);
+        return false;
+    }
+    
+    // 记录起始位置
+    moveStartHeight = currentHeight.load();
+    moveStartAngle = currentAngle.load();
+    targetHeight = height;
+    targetAngle = angle;
+    
+    std::string command = CommandProtocol::buildMoveCommand(height, angle);
+    if (!sendCommand(command)) {
+        return false;
+    }
+    
+    // 启动监控线程
+    stopMonitoring = false;
+    monitorThread = std::make_unique<std::thread>(&MotorController::monitorMovement, this);
+    
+    // 等待移动完成
+    return waitForCompletion();
 }
 
 bool MotorController::stop() {
-    m_isMoving = false;
-    m_isStopped = true;
+    std::string command = CommandProtocol::buildStopCommand();
+    bool success = sendCommandAndWait(command);
     
-    if (m_motorInterface) {
-        bool result = m_motorInterface->stop();
-        if (result) {
-            LOG_INFO("Motors stopped");
-        }
-        return result;
+    if (success) {
+        notifyStatus(MotorStatus::IDLE);
+        LOG_INFO("Motor stopped");
     }
     
-    return false;
+    return success;
 }
 
 bool MotorController::emergencyStop() {
-    LOG_ERROR("EMERGENCY STOP!");
+    std::string command = CommandProtocol::buildEmergencyStopCommand();
+    bool success = sendCommand(command); // 不等待响应，立即返回
     
-    bool result = stop();
+    notifyStatus(MotorStatus::ERROR);
+    stopMonitoring = true;
     
-    if (m_safetyManager) {
-        m_safetyManager->triggerEmergencyStop();
-    }
-    
-    emit movementFailed("Emergency stop triggered");
-    return result;
+    LOG_WARNING("Emergency stop activated");
+    return success;
 }
 
-bool MotorController::goHome() {
-    if (m_motorInterface) {
-        bool result = m_motorInterface->home();
-        if (result) {
-            m_targetHeight = 0.0f;
-            m_targetAngle = 0.0f;
-            m_isMoving = true;
-            m_isStopped = false;
-            emit movementStarted();
-            LOG_INFO("Homing started");
+bool MotorController::home() {
+    std::string command = CommandProtocol::buildHomeCommand();
+    if (!sendCommand(command)) {
+        return false;
+    }
+    
+    // 设置目标位置为原点
+    auto config = SystemConfig::getInstance();
+    targetHeight = config.getHomeHeight();
+    targetAngle = config.getHomeAngle();
+    
+    notifyStatus(MotorStatus::HOMING);
+    
+    // 启动监控
+    stopMonitoring = false;
+    monitorThread = std::make_unique<std::thread>(&MotorController::monitorMovement, this);
+    
+    LOG_INFO("Homing started");
+    return true;
+}
+
+void MotorController::moveToPositionAsync(double height, double angle) {
+    // 安全检查
+    if (!checkSafety(height, angle)) {
+        notifyError("Position out of safety limits", ErrorCode::OUT_OF_RANGE);
+        return;
+    }
+    
+    // 记录起始位置
+    moveStartHeight = currentHeight.load();
+    moveStartAngle = currentAngle.load();
+    targetHeight = height;
+    targetAngle = angle;
+    
+    // 在新线程中执行移动
+    std::thread([this, height, angle]() {
+        std::string command = CommandProtocol::buildMoveCommand(height, angle);
+        if (sendCommand(command)) {
+            // 启动监控
+            monitorMovement();
         }
-        return result;
-    }
+    }).detach();
+}
+
+bool MotorController::waitForCompletion(int timeoutMs) {
+    auto startTime = std::chrono::steady_clock::now();
     
-    return false;
-}
-
-bool MotorController::isMoving() const {
-    return m_isMoving;
-}
-
-bool MotorController::isStopped() const {
-    return m_isStopped;
-}
-
-bool MotorController::isAtTarget() const {
-    const float tolerance = 0.5f;
-    
-    bool heightOk = std::abs(m_currentHeight - m_targetHeight) < tolerance;
-    bool angleOk = std::abs(m_currentAngle - m_targetAngle) < tolerance;
-    
-    return heightOk && angleOk;
-}
-
-MotorStatus MotorController::getStatus() const {
-    return m_status;
-}
-
-void MotorController::setTargetHeight(float height) {
-    if (m_safetyManager && m_safetyManager->isHeightSafe(height)) {
-        m_targetHeight = height;
-        updateMotorStatus();
-        emit statusChanged(m_status);
-    }
-}
-
-void MotorController::setTargetAngle(float angle) {
-    if (m_safetyManager && m_safetyManager->isAngleSafe(angle)) {
-        m_targetAngle = angle;
-        updateMotorStatus();
-        emit statusChanged(m_status);
-    }
-}
-
-void MotorController::setControlMode(ControlMode mode) {
-    m_controlMode = mode;
-    LOG_INFO(QString("Control mode changed to: %1").arg(static_cast<int>(mode)));
-}
-
-void MotorController::updateStatus() {
-    // 这里应该从MCU获取实际位置
-    // 现在暂时模拟
-    if (m_isMoving) {
-        // 模拟向目标移动
-        m_currentHeight = MathUtils::lerp(m_currentHeight, m_targetHeight, 0.1f);
-        m_currentAngle = MathUtils::lerp(m_currentAngle, m_targetAngle, 0.1f);
+    while (isMoving()) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+            
+        if (elapsed >= timeoutMs) {
+            LOG_ERROR("Motor movement timeout");
+            stop();
+            return false;
+        }
         
-        if (isAtTarget()) {
-            m_isMoving = false;
-            emit movementCompleted();
-            emit targetReached();
-            LOG_INFO("Target position reached");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    return !hasError();
+}
+
+bool MotorController::executeBatch(const std::vector<MotorCommand>& commands) {
+    for (const auto& cmd : commands) {
+        bool success = false;
+        
+        switch (cmd.type) {
+            case MotorCommandType::SET_HEIGHT:
+                success = setHeight(cmd.height);
+                break;
+                
+            case MotorCommandType::SET_ANGLE:
+                success = setAngle(cmd.angle);
+                break;
+                
+            case MotorCommandType::MOVE_TO:
+                success = moveToPosition(cmd.height, cmd.angle);
+                break;
+                
+            case MotorCommandType::STOP:
+                success = stop();
+                break;
+                
+            case MotorCommandType::HOME:
+                success = home();
+                break;
         }
-    }
-    
-    updateMotorStatus();
-}
-
-void MotorController::onSafetyViolation(const QString& message) {
-    stop();
-    emit movementFailed(QString("Safety violation: %1").arg(message));
-}
-
-bool MotorController::validateMovement(float height, float angle) {
-    if (!m_safetyManager) {
-        LOG_WARNING("No safety manager configured");
-        return false;
-    }
-    
-    if (!m_safetyManager->isMovementAllowed()) {
-        emit movementFailed("Movement not allowed (emergency stop active)");
-        return false;
-    }
-    
-    SafetyManager::MovementRequest request;
-    request.targetHeight = height;
-    request.targetAngle = angle;
-    request.speed = 30.0f; // 默认速度
-    
-    if (!m_safetyManager->validateMovementRequest(request)) {
-        emit movementFailed("Movement request failed safety validation");
-        return false;
+        
+        if (!success) {
+            LOG_ERROR("Batch command failed, stopping execution");
+            return false;
+        }
     }
     
     return true;
 }
 
-void MotorController::updateMotorStatus() {
-    m_status.isConnected = m_motorInterface != nullptr;
-    m_status.isMoving = m_isMoving;
-    m_status.currentHeight = m_currentHeight;
-    m_status.currentAngle = m_currentAngle;
-    m_status.targetHeight = m_targetHeight;
-    m_status.targetAngle = m_targetAngle;
-    m_status.mode = m_controlMode;
-    m_status.timestamp = QDateTime::currentDateTime();
+bool MotorController::updateStatus() {
+    std::string command = CommandProtocol::buildGetStatusCommand();
+    std::string response = serial->sendAndReceive(command, commandTimeout);
     
-    emit statusChanged(m_status);
+    if (response.empty()) {
+        notifyError("Status query timeout", ErrorCode::TIMEOUT);
+        return false;
+    }
+    
+    CommandResponse cmdResponse = CommandProtocol::parseResponse(response);
+    
+    if (cmdResponse.type == ResponseType::STATUS) {
+        // 解析状态数据 "STATUS:READY,25.0,5.5"
+        std::istringstream iss(cmdResponse.data);
+        std::string statusStr;
+        double height, angle;
+        char comma;
+        
+        std::getline(iss, statusStr, ',');
+        iss >> height >> comma >> angle;
+        
+        // 更新位置
+        updateCurrentPosition(height, angle);
+        
+        // 更新状态
+        if (statusStr == "READY") {
+            notifyStatus(MotorStatus::IDLE);
+        } else if (statusStr == "MOVING") {
+            notifyStatus(MotorStatus::MOVING);
+        } else if (statusStr == "ERROR") {
+            notifyStatus(MotorStatus::ERROR);
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
+
+void MotorController::setSpeed(MotorSpeed newSpeed) {
+    speed = newSpeed;
+    SystemConfig::getInstance().setMotorSpeed(newSpeed);
+    LOG_INFO_F("Motor speed set to %s", SystemConfig::getInstance().getMotorSpeedString().c_str());
+}
+
+void MotorController::setStatusCallback(StatusCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    statusCallback = callback;
+}
+
+void MotorController::setProgressCallback(ProgressCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    progressCallback = callback;
+}
+
+void MotorController::setErrorCallback(ErrorCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    errorCallback = callback;
+}
+
+MotorError MotorController::getLastError() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return lastError;
+}
+
+void MotorController::clearError() {
+    std::lock_guard<std::mutex> lock(mutex);
+    lastError = MotorError{0, "", ErrorCode::NONE};
+    if (status == MotorStatus::ERROR) {
+        notifyStatus(MotorStatus::IDLE);
+    }
+}
+
+void MotorController::updateCurrentPosition(double height, double angle) {
+    currentHeight = height;
+    currentAngle = angle;
+    
+    // 计算并通知进度
+    if (isMoving()) {
+        double progress = calculateProgress();
+        notifyProgress(progress);
+    }
+}
+
+// 私有方法实现
+
+bool MotorController::sendCommand(const std::string& command) {
+    if (!serial || !serial->isOpen()) {
+        notifyError("Serial port not open", ErrorCode::HARDWARE_ERROR);
+        return false;
+    }
+    
+    return serial->sendCommand(command);
+}
+
+bool MotorController::sendCommandAndWait(const std::string& command) {
+    if (!serial || !serial->isOpen()) {
+        notifyError("Serial port not open", ErrorCode::HARDWARE_ERROR);
+        return false;
+    }
+    
+    std::string response = serial->sendAndReceive(command, commandTimeout);
+    
+    if (response.empty()) {
+        notifyError("Command timeout", ErrorCode::TIMEOUT);
+        return false;
+    }
+    
+    CommandResponse cmdResponse = CommandProtocol::parseResponse(response);
+    
+    if (cmdResponse.type == ResponseType::OK) {
+        return true;
+    } else if (cmdResponse.type == ResponseType::ERROR) {
+        ErrorCode code = CommandProtocol::parseErrorCode(cmdResponse.errorMessage);
+        notifyError(cmdResponse.errorMessage, code);
+        return false;
+    }
+    
+    notifyError("Unexpected response", ErrorCode::UNKNOWN);
+    return false;
+}
+
+void MotorController::monitorMovement() {
+    notifyStatus(MotorStatus::MOVING);
+    
+    while (!stopMonitoring && isMoving()) {
+        // 查询当前状态
+        if (!updateStatus()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+        
+        // 检查是否到达目标
+        double heightDiff = std::abs(currentHeight - targetHeight);
+        double angleDiff = std::abs(currentAngle - targetAngle);
+        
+        if (heightDiff < 0.1 && angleDiff < 0.1) {
+            // 到达目标位置
+            notifyStatus(MotorStatus::IDLE);
+            notifyProgress(100.0);
+            break;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    stopMonitoring = false;
+}
+
+void MotorController::notifyStatus(MotorStatus newStatus) {
+    if (status != newStatus) {
+        status = newStatus;
+        LOG_INFO_F("Motor status changed to: %d", static_cast<int>(newStatus));
+        
+        if (statusCallback) {
+            std::thread([this, newStatus]() {
+                statusCallback(newStatus);
+            }).detach();
+        }
+    }
+}
+
+void MotorController::notifyProgress(double progress) {
+    if (progressCallback) {
+        std::thread([this, progress]() {
+            progressCallback(progress);
+        }).detach();
+    }
+}
+
+void MotorController::notifyError(const std::string& message, ErrorCode code) {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        lastError = MotorError{getCurrentTimestamp(), message, code};
+    }
+    
+    notifyStatus(MotorStatus::ERROR);
+    LOG_ERROR("Motor error: " + message);
+    
+    if (errorCallback) {
+        std::thread([this, error = lastError]() {
+            errorCallback(error);
+        }).detach();
+    }
+}
+
+double MotorController::calculateProgress() const {
+    double heightRange = std::abs(targetHeight - moveStartHeight);
+    double angleRange = std::abs(targetAngle - moveStartAngle);
+    
+    if (heightRange < 0.01 && angleRange < 0.01) {
+        return 100.0; // 已经在目标位置
+    }
+    
+    double heightProgress = 0.0;
+    double angleProgress = 0.0;
+    
+    if (heightRange > 0.01) {
+        double heightMoved = std::abs(currentHeight - moveStartHeight);
+        heightProgress = (heightMoved / heightRange) * 100.0;
+    } else {
+        heightProgress = 100.0;
+    }
+    
+    if (angleRange > 0.01) {
+        double angleMoved = std::abs(currentAngle - moveStartAngle);
+        angleProgress = (angleMoved / angleRange) * 100.0;
+    } else {
+        angleProgress = 100.0;
+    }
+    
+    // 返回两者的平均进度
+    double progress = (heightProgress + angleProgress) / 2.0;
+    return std::min(100.0, std::max(0.0, progress));
+}
+
+bool MotorController::checkSafety(double height, double angle) {
+    // 使用SafetyManager进行检查
+    if (safety && !safety->checkPosition(height, angle)) {
+        return false;
+    }
+    
+    // 也使用系统配置进行检查
+    return SystemConfig::getInstance().isPositionValid(height, angle);
+}
+
+int64_t MotorController::getCurrentTimestamp() const {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto duration = now.time_since_epoch();
+    return duration_cast<milliseconds>(duration).count();
 }

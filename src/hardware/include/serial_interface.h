@@ -1,66 +1,178 @@
-#pragma once
-#include <QObject>
-#include <QSerialPort>
-#include <QSerialPortInfo>
-#include <QString>
-#include <QByteArray>
-#include <memory>
+// src/hardware/include/serial_interface.h
+#ifndef SERIAL_INTERFACE_H
+#define SERIAL_INTERFACE_H
 
-struct PortInfo {
-    QString portName;
-    QString description;
-    QString manufacturer;
-    bool isBusy;
+#include <string>
+#include <vector>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <atomic>
+#include <queue>
+
+/**
+ * @brief 串口信息结构
+ */
+struct SerialPortInfo {
+    std::string portName;     // 端口名称（如 COM3, /dev/ttyUSB0）
+    std::string description;  // 端口描述
+    std::string hardwareId;   // 硬件ID
+    bool isAvailable;         // 是否可用
 };
 
-class SerialInterface : public QObject {
-    Q_OBJECT
-    
+/**
+ * @brief 数据位枚举
+ */
+enum class DataBits {
+    FIVE = 5,
+    SIX = 6,
+    SEVEN = 7,
+    EIGHT = 8
+};
+
+/**
+ * @brief 校验位枚举
+ */
+enum class Parity {
+    NONE,
+    ODD,
+    EVEN,
+    MARK,
+    SPACE
+};
+
+/**
+ * @brief 停止位枚举
+ */
+enum class StopBits {
+    ONE,
+    ONE_POINT_FIVE,
+    TWO
+};
+
+/**
+ * @brief 流控制枚举
+ */
+enum class FlowControl {
+    NONE,
+    HARDWARE,
+    SOFTWARE
+};
+
+/**
+ * @brief 串口配置结构
+ */
+struct SerialPortConfig {
+    int baudRate = 115200;
+    DataBits dataBits = DataBits::EIGHT;
+    Parity parity = Parity::NONE;
+    StopBits stopBits = StopBits::ONE;
+    FlowControl flowControl = FlowControl::NONE;
+    int readTimeout = 1000;  // 毫秒
+    int writeTimeout = 1000; // 毫秒
+};
+
+/**
+ * @brief 串口接口类
+ * 
+ * 提供跨平台的串口通信功能：
+ * - 端口枚举和管理
+ * - 数据收发
+ * - 异步通信支持
+ * - 自动重连
+ */
+class SerialInterface {
 public:
-    explicit SerialInterface(QObject *parent = nullptr);
-    ~SerialInterface();
+    SerialInterface();
+    virtual ~SerialInterface();
     
-    // 端口管理
-    QList<PortInfo> getAvailablePorts() const;
-    bool connect(const QString& portName, int baudRate = 115200);
-    void disconnect();
-    bool isConnected() const;
+    // 回调函数类型
+    using ConnectionCallback = std::function<void(bool connected)>;
+    using DataReceivedCallback = std::function<void(const std::string& data)>;
+    using ErrorCallback = std::function<void(const std::string& error)>;
     
-    // 数据传输
-    bool sendData(const QString& data);
-    bool sendCommand(const QString& command);  // 自动添加换行符
+    // 静态方法：获取可用端口列表
+    static std::vector<SerialPortInfo> getAvailablePorts();
     
-    // 配置
-    bool setBaudRate(int baudRate);
-    bool setDataBits(QSerialPort::DataBits dataBits);
-    bool setParity(QSerialPort::Parity parity);
-    bool setStopBits(QSerialPort::StopBits stopBits);
-    bool setFlowControl(QSerialPort::FlowControl flowControl);
+    // 连接管理
+    bool open(const std::string& portName, int baudRate);
+    bool open(const std::string& portName, const SerialPortConfig& config);
+    void close();
+    bool isOpen() const;
     
-    // 状态
-    QString getCurrentPort() const;
-    int getCurrentBaudRate() const;
+    // 端口信息
+    std::string getCurrentPort() const { return currentPort; }
+    int getCurrentBaudRate() const { return currentConfig.baudRate; }
+    SerialPortConfig getCurrentConfig() const { return currentConfig; }
     
-    // 测试用：处理接收的数据
-    void processReceivedData(const QByteArray& data);
+    // 数据收发
+    bool sendCommand(const std::string& command);
+    bool sendData(const std::vector<uint8_t>& data);
+    std::string readLine(int timeoutMs = 1000);
+    std::vector<uint8_t> readBytes(size_t count, int timeoutMs = 1000);
+    int bytesAvailable() const;
     
-signals:
-    // 数据信号
-    void dataReceived(const QByteArray& data);  // 原始数据
-    void lineReceived(const QString& line);     // 完整的一行
+    // 高级功能
+    std::string sendAndReceive(const std::string& command, int timeoutMs = 5000);
+    void flushBuffers();
     
-    // 状态信号
-    void connected(const QString& portName);
-    void disconnected();
-    void errorOccurred(const QString& error);
+    // 回调设置
+    void setConnectionCallback(ConnectionCallback callback);
+    void setDataReceivedCallback(DataReceivedCallback callback);
+    void setErrorCallback(ErrorCallback callback);
     
-private slots:
-    void handleReadyRead();
-    void handleError(QSerialPort::SerialPortError error);
+    // 自动重连
+    void setAutoReconnect(bool enable) { autoReconnect = enable; }
+    bool isAutoReconnectEnabled() const { return autoReconnect; }
+    
+    // 测试支持
+    void setMockMode(bool enable) { mockMode = enable; }
+    bool isMockMode() const { return mockMode; }
+    
+protected:
+    // 平台相关的实现（由子类或pimpl实现）
+    virtual bool platformOpen(const std::string& portName, const SerialPortConfig& config);
+    virtual void platformClose();
+    virtual bool platformWrite(const std::vector<uint8_t>& data);
+    virtual std::vector<uint8_t> platformRead(size_t maxBytes, int timeoutMs);
+    virtual int platformBytesAvailable() const;
+    virtual void platformFlush();
+    
+    // 模拟模式支持（用于测试）
+    void simulateDisconnection();
     
 private:
-    std::unique_ptr<QSerialPort> m_serialPort;
-    QByteArray m_receiveBuffer;  // 接收缓冲区
+    // 内部方法
+    void notifyConnection(bool connected);
+    void notifyDataReceived(const std::string& data);
+    void notifyError(const std::string& error);
+    void reconnectThread();
+    std::string readUntilTerminator(const std::string& terminator, int timeoutMs);
     
-    void processBuffer();  // 处理缓冲区中的完整行
+    // 成员变量
+    mutable std::mutex mutex;
+    std::string currentPort;
+    SerialPortConfig currentConfig;
+    std::atomic<bool> connected{false};
+    std::atomic<bool> autoReconnect{false};
+    std::atomic<bool> mockMode{false};
+    
+    // 回调函数
+    ConnectionCallback connectionCallback;
+    DataReceivedCallback dataReceivedCallback;
+    ErrorCallback errorCallback;
+    
+    // 重连线程
+    std::unique_ptr<std::thread> reconnectThreadPtr;
+    std::atomic<bool> stopReconnect{false};
+    
+    // 平台相关的实现指针（pimpl模式）
+    class Impl;
+    std::unique_ptr<Impl> pImpl;
+    
+    // 测试支持
+    friend class MockSerialPort;
 };
+
+#endif // SERIAL_INTERFACE_H

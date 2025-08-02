@@ -1,99 +1,162 @@
-#pragma once
-#include <QObject>
-#include <QFile>
-#include <QTextStream>
-#include <QTimer>
-#include <QQueue>
-#include <memory>
-#include "models/include/sensor_data.h"
+// src/core/include/data_recorder.h
+#ifndef DATA_RECORDER_H
+#define DATA_RECORDER_H
 
-class DataRecorder : public QObject {
-    Q_OBJECT
-    
+#include <vector>
+#include <deque>
+#include <mutex>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <thread>
+#include <chrono>
+#include "../../models/include/measurement_data.h"
+
+/**
+ * @brief 数据统计信息
+ */
+struct DataStatistics {
+    int totalRecords = 0;
+    double averageHeight = 0.0;
+    double averageAngle = 0.0;
+    double averageCapacitance = 0.0;
+    double minHeight = 0.0;
+    double maxHeight = 0.0;
+    double minAngle = 0.0;
+    double maxAngle = 0.0;
+    double minCapacitance = 0.0;
+    double maxCapacitance = 0.0;
+    int64_t firstRecordTime = 0;
+    int64_t lastRecordTime = 0;
+};
+
+/**
+ * @brief 数据记录器类
+ * 
+ * 负责记录和管理测量数据：
+ * - 数据存储和检索
+ * - CSV导入/导出
+ * - 自动保存
+ * - 数据过滤和统计
+ * - 内存管理
+ * - 数据备份和恢复
+ */
+class DataRecorder {
 public:
-    enum class Format {
-        CSV,
-        JSON,
-        Binary
-    };
+    /**
+     * @brief 构造函数
+     */
+    DataRecorder();
     
-    struct RecordingInfo {
-        QString fileName;
-        QDateTime startTime;
-        int recordCount;
-        qint64 fileSize;
-        bool isRecording;
-    };
-    
-    explicit DataRecorder(QObject* parent = nullptr);
+    /**
+     * @brief 析构函数
+     */
     ~DataRecorder();
     
-    // 记录控制
-    bool startRecording(const QString& fileName = QString());
-    void stopRecording();
-    bool isRecording() const;
-    void pauseRecording();
-    void resumeRecording();
+    // 回调函数类型
+    using DataChangeCallback = std::function<void(int recordCount)>;
+    using ExportProgressCallback = std::function<void(int current, int total)>;
     
-    // 数据记录
-    void recordData(const SensorData& data);
-    void recordEvent(const QString& event);
+    // 数据记录方法
+    void recordMeasurement(const MeasurementData& measurement);
+    void recordCurrentState(double setHeight, double setAngle, const SensorData& sensorData);
     
-    // 配置
-    void setFormat(Format format);
-    void setBufferSize(int size);
-    void setMaxFileSize(qint64 bytes);
-    void setMaxDuration(int seconds);
-    void setDataPath(const QString& path);
+    // 数据访问
+    bool hasData() const { return !measurements.empty(); }
+    int getRecordCount() const;
+    MeasurementData getLatestMeasurement() const;
+    std::vector<MeasurementData> getAllMeasurements() const;
+    std::vector<MeasurementData> getMeasurementsInTimeRange(
+        const std::chrono::system_clock::time_point& start,
+        const std::chrono::system_clock::time_point& end) const;
     
-    // 缓冲区管理
-    void flushBuffer();
-    int getBufferedCount() const;
+    // 数据过滤
+    std::vector<MeasurementData> filterMeasurements(
+        std::function<bool(const MeasurementData&)> predicate) const;
     
-    // 文件管理
-    QString generateFileName() const;
-    static QStringList getRecordedFiles(const QString& path);
+    // 数据管理
+    void clear();
+    void setMaxRecords(size_t max);
+    size_t getMaxRecords() const { return maxRecords; }
     
-    // 获取信息
-    RecordingInfo getRecordingInfo() const;
-    qint64 getMaxFileSize() const { return m_maxFileSize; }
-    int getMaxDuration() const { return m_maxDuration; }
+    // 内存管理
+    void setMemoryLimit(size_t bytes);
+    size_t getEstimatedMemoryUsage() const;
     
-signals:
-    void recordingStarted(const QString& fileName);
-    void recordingStopped(const QString& fileName, int recordCount);
-    void recordingError(const QString& error);
-    void fileSizeLimit();
-    void timeLimitReached();
+    // 文件操作
+    bool exportToCSV(const std::string& filename) const;
+    bool exportToCSV(const std::string& filename, 
+                     const std::chrono::system_clock::time_point& start,
+                     const std::chrono::system_clock::time_point& end) const;
+    bool importFromCSV(const std::string& filename);
     
-private slots:
-    void checkLimits();
-    void autoFlush();
+    // 自动保存
+    void setAutoSave(bool enable, const std::string& filename = "");
+    bool isAutoSaveEnabled() const { return autoSaveEnabled; }
+    void setAutoSaveInterval(int intervalMs);
+    int getAutoSaveInterval() const { return autoSaveInterval; }
+    
+    // 备份和恢复
+    bool createBackup(const std::string& filename) const;
+    bool restoreFromBackup(const std::string& filename);
+    
+    // 数据压缩
+    void setCompressionEnabled(bool enable) { compressionEnabled = enable; }
+    void setCompressionThreshold(double threshold) { compressionThreshold = threshold; }
+    void compressData();
+    
+    // 统计信息
+    DataStatistics getStatistics() const;
+    
+    // 回调设置
+    void setDataChangeCallback(DataChangeCallback callback);
+    void setExportProgressCallback(ExportProgressCallback callback);
+    
+    // 实用方法
+    std::string getDefaultFilename() const;
+    static std::string generateTimestampFilename(const std::string& prefix = "data");
     
 private:
-    std::unique_ptr<QFile> m_file;
-    std::unique_ptr<QTextStream> m_stream;
-    QTimer* m_limitTimer;
-    QTimer* m_flushTimer;
-    
-    Format m_format;
-    QString m_dataPath;
-    RecordingInfo m_info;
-    bool m_isPaused;
-    
-    // 缓冲
-    QQueue<SensorData> m_dataBuffer;
-    int m_bufferSize;
-    
-    // 限制
-    qint64 m_maxFileSize;
-    int m_maxDuration;
-    
     // 内部方法
-    bool openFile(const QString& fileName);
-    void closeFile();
-    void writeHeader();
-    void writeData(const SensorData& data);
-    QString formatDataAsCSV(const SensorData& data) const;
-    QString formatDataAsJSON(const SensorData& data) const;
+    void enforceMaxRecords();
+    void enforceMemoryLimit();
+    void autoSaveThread();
+    void notifyDataChange();
+    void notifyExportProgress(int current, int total);
+    bool shouldCompressRecord(const MeasurementData& existing, const MeasurementData& newData) const;
+    size_t estimateRecordSize(const MeasurementData& record) const;
+    void updateStatistics(const MeasurementData& measurement);
+    
+    // 成员变量
+    mutable std::mutex mutex;
+    std::deque<MeasurementData> measurements;
+    
+    // 限制参数
+    std::atomic<size_t> maxRecords{10000};
+    std::atomic<size_t> memoryLimit{100 * 1024 * 1024}; // 100MB默认
+    
+    // 自动保存
+    std::atomic<bool> autoSaveEnabled{false};
+    std::atomic<int> autoSaveInterval{300000}; // 5分钟默认
+    std::string autoSaveFilename;
+    std::unique_ptr<std::thread> autoSaveThread;
+    std::atomic<bool> stopAutoSave{false};
+    std::chrono::system_clock::time_point lastAutoSave;
+    
+    // 数据压缩
+    std::atomic<bool> compressionEnabled{false};
+    std::atomic<double> compressionThreshold{0.1}; // 默认0.1mm/0.1度
+    
+    // 回调函数
+    DataChangeCallback dataChangeCallback;
+    ExportProgressCallback exportProgressCallback;
+    
+    // 统计缓存
+    mutable DataStatistics cachedStatistics;
+    mutable bool statisticsValid{false};
+    
+    // 内存使用估算
+    mutable std::atomic<size_t> estimatedMemoryUsage{0};
 };
+
+#endif // DATA_RECORDER_H
