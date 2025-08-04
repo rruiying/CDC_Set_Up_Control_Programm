@@ -6,16 +6,9 @@
 #include <algorithm>
 #include <ctime>
 
-// 静态成员初始化
-std::unique_ptr<Logger> Logger::instance = nullptr;
-std::mutex Logger::instanceMutex;
-
 Logger& Logger::getInstance() {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    if (!instance) {
-        instance.reset(new Logger());
-    }
-    return *instance;
+    static Logger instance;  // C++11保证线程安全的静态局部变量初始化
+    return instance;
 }
 
 Logger::Logger() {

@@ -70,19 +70,17 @@ QString MotorInterface::formatSpeedCommand(float speed) const {
 }
 
 bool MotorInterface::sendCommand(const QString& cmd) {
-    if (!m_serial || !m_serial->isConnected()) {
+    if (!m_serial || !m_serial->isOpen()) {
         LOG_WARNING("Cannot send motor command: Serial not connected");
         emit commandFailed("Serial port not connected");
         return false;
     }
     
-    bool success = m_serial->sendCommand(cmd);
+    bool success = m_serial->sendCommand(cmd.toStdString());
     if (success) {
-        LOG_DEBUG(QString("Motor command sent: %1").arg(cmd));
-        emit commandSent(cmd);
+        LOG_INFO(QString("Motor command sent: %1").arg(cmd).toStdString());
     } else {
-        LOG_ERROR(QString("Failed to send motor command: %1").arg(cmd));
-        emit commandFailed("Failed to send command");
+        LOG_ERROR(QString("Failed to send motor command: %1").arg(cmd).toStdString());
     }
     
     return success;

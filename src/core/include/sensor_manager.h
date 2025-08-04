@@ -143,3 +143,5 @@ private:
     // 统计信息
     mutable SensorStatistics statistics;
 };
+
+#endif // SENSOR_MANAGER_H

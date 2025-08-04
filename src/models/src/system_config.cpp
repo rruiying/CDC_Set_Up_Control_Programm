@@ -88,7 +88,7 @@ bool SystemConfig::loadFromFile(const std::string& filename) {
         }
         
         // 解析电机速度
-        std::regex speedRegex(R"("defaultSpeed"\s*:\s*"([^"]+)")");
+        std::regex speedRegex("\"defaultSpeed\"\\s*:\\s*\"([^\"]+)\"");
         if (std::regex_search(content, match, speedRegex)) {
             setMotorSpeedFromString(match[1]);
         }
@@ -213,6 +213,28 @@ void SystemConfig::setSafetyLimits(double minH, double maxH, double minA, double
     notifyChange();
 }
 
+void SystemConfig::setHeightLimits(double minH, double maxH) {
+    if (minH >= maxH) {
+        return; // 无效范围
+    }
+    
+    std::lock_guard<std::mutex> lock(mutex);
+    this->minHeight = minH;
+    this->maxHeight = maxH;
+    notifyChange();
+}
+
+void SystemConfig::setAngleLimits(double minA, double maxA) {
+    if (minA >= maxA) {
+        return; // 无效范围
+    }
+    
+    std::lock_guard<std::mutex> lock(mutex);
+    this->minAngle = minA;
+    this->maxAngle = maxA;
+    notifyChange();
+}
+
 bool SystemConfig::setPlateArea(double area) {
     if (area <= 0) {
         return false;
@@ -304,25 +326,26 @@ void SystemConfig::setConfigChangeCallback(ConfigChangeCallback callback) {
     changeCallback = callback;
 }
 
+// 更新reset()方法以使用新的默认值
 void SystemConfig::reset() {
     std::lock_guard<std::mutex> lock(mutex);
     
-    // 重置到默认值
+    // 重置到新的默认值（符合第二页需求）
     minHeight = 0.0;
-    maxHeight = 100.0;
+    maxHeight = 180.0;        // 改为180mm
     minAngle = -90.0;
     maxAngle = 90.0;
     
-    plateArea = 0.01;
+    plateArea = 2500.0;       // mm² (50mm x 50mm)
     dielectricConstant = 1.0;
     
-    totalHeight = 200.0;
-    middlePlateHeight = 25.0;
-    sensorSpacing = 100.0;
+    totalHeight = 180.0;      // mm
+    middlePlateHeight = 25.0; // mm
+    sensorSpacing = 80.0;     // mm
     
     motorSpeed = MotorSpeed::MEDIUM;
-    homeHeight = 50.0;
-    homeAngle = 0.0;
+    homeHeight = 0.0;         // mm，改为0
+    homeAngle = 0.0;          // degrees
     
     defaultBaudRate = 115200;
     communicationTimeout = 5000;

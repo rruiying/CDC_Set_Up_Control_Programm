@@ -1,15 +1,16 @@
+// src/hardware/include/sensor_interface.h
 #pragma once
 #include <QObject>
 #include <QTimer>
-#include "models/include/sensor_data.h"
+#include "../models/include/sensor_data.h"
 
-class SerialInterface;
+class QtSerialInterface;
 
 class SensorInterface : public QObject {
     Q_OBJECT
     
 public:
-    explicit SensorInterface(SerialInterface* serial, QObject* parent = nullptr);
+    explicit SensorInterface(QtSerialInterface* serial, QObject* parent = nullptr);
     ~SensorInterface();
     
     // 数据请求
@@ -40,7 +41,7 @@ private slots:
     void onPollTimer();
     
 private:
-    SerialInterface* m_serial;
+    QtSerialInterface* m_serial;
     QTimer* m_pollTimer;
     SensorData m_latestData;
     

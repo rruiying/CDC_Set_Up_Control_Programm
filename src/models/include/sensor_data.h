@@ -2,6 +2,8 @@
 #ifndef SENSOR_DATA_H
 #define SENSOR_DATA_H
 
+#include <QString>
+#include <QDateTime>
 #include <string>
 #include <vector>
 
@@ -22,19 +24,6 @@ public:
     SensorData();
     
     /**
-     * @brief 带参数的构造函数
-     * @param upper1 上方传感器1的读数(mm)
-     * @param upper2 上方传感器2的读数(mm)
-     * @param lower1 下方传感器1的读数(mm)
-     * @param lower2 下方传感器2的读数(mm)
-     * @param temp 温度读数(°C)
-     * @param angle 角度传感器读数(度)
-     * @param capacitance 电容读数(pF)
-     */
-    SensorData(double upper1, double upper2, double lower1, double lower2,
-               double temp, double angle, double capacitance);
-    
-    /**
      * @brief 拷贝构造函数
      */
     SensorData(const SensorData& other);
@@ -44,16 +33,35 @@ public:
      */
     SensorData& operator=(const SensorData& other);
     
-    // Getter方法
-    double getUpperSensor1() const { return upperSensor1; }
-    double getUpperSensor2() const { return upperSensor2; }
-    double getLowerSensor1() const { return lowerSensor1; }
-    double getLowerSensor2() const { return lowerSensor2; }
-    double getTemperature() const { return temperature; }
-    double getMeasuredAngle() const { return measuredAngle; }
-    double getMeasuredCapacitance() const { return measuredCapacitance; }
+    // 原始传感器数据
+    double distanceUpper1;    // 上方传感器1 (mm)
+    double distanceUpper2;    // 上方传感器2 (mm)
+    double distanceLower1;    // 下方传感器1 (mm)
+    double distanceLower2;    // 下方传感器2 (mm)
+    double temperature;       // 温度 (°C)
+    double angle;            // 测量角度 (度)
+    double capacitance;      // 测量电容 (pF)
     
-    // 计算值的Getter方法
+    // 时间戳
+    QDateTime timestamp;
+    
+    // 数据有效性标志
+    struct {
+        bool distanceUpper1;
+        bool distanceUpper2;
+        bool distanceLower1;
+        bool distanceLower2;
+        bool temperature;
+        bool angle;
+        bool capacitance;
+    } isValid;
+    
+    // 系统参数
+    double systemHeight = 200.0;      // 系统总高度 (mm)
+    double middlePlateHeight = 25.0;  // 中间板高度 (mm)
+    double sensorSpacing = 100.0;     // 传感器间距 (mm)
+    
+    // 计算值的方法
     double getAverageHeight() const;
     double getCalculatedAngle() const;
     double getAverageGroundDistance() const;
@@ -63,8 +71,8 @@ public:
     bool setUpperSensors(double sensor1, double sensor2);
     bool setLowerSensors(double sensor1, double sensor2);
     bool setTemperature(double temp);
-    bool setMeasuredAngle(double angle);
-    bool setMeasuredCapacitance(double cap);
+    bool setAngle(double angle);
+    bool setCapacitance(double cap);
     
     // 系统参数设置
     void setSystemHeight(double height) { systemHeight = height; }
@@ -72,10 +80,16 @@ public:
     void setSensorSpacing(double spacing) { sensorSpacing = spacing; }
     
     /**
-     * @brief 检查数据是否有效
+     * @brief 检查所有数据是否有效
      * @return true 如果所有数据都在合理范围内
      */
-    bool isValid() const;
+    bool isAllValid() const;
+    
+    /**
+     * @brief 检查是否有任何有效数据
+     * @return true 如果至少有一个数据有效
+     */
+    bool hasValidData() const;
     
     /**
      * @brief 从字符串解析数据（用于串口通信）
@@ -89,6 +103,7 @@ public:
      * @return 格式化的字符串
      */
     std::string toString() const;
+    QString toQString() const;
     
     /**
      * @brief 转换为CSV格式
@@ -102,24 +117,12 @@ public:
      */
     static std::string getCSVHeader();
     
+    /**
+     * @brief 重置所有数据
+     */
+    void reset();
+    
 private:
-    // 原始传感器数据
-    double upperSensor1;    // 上方传感器1 (mm)
-    double upperSensor2;    // 上方传感器2 (mm)
-    double lowerSensor1;    // 下方传感器1 (mm)
-    double lowerSensor2;    // 下方传感器2 (mm)
-    double temperature;     // 温度 (°C)
-    double measuredAngle;   // 测量角度 (度)
-    double measuredCapacitance; // 测量电容 (pF)
-    
-    // 系统参数
-    double systemHeight = 200.0;      // 系统总高度 (mm)
-    double middlePlateHeight = 25.0;  // 中间板高度 (mm)
-    double sensorSpacing = 100.0;     // 传感器间距 (mm)
-    
-    // 数据有效性标志
-    bool valid = false;
-    
     // 辅助方法
     bool isInRange(double value, double min, double max) const;
     std::vector<double> parseNumbers(const std::string& str) const;

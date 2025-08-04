@@ -63,3 +63,7 @@ desktop.ini
 docs/build/
 docs/html/
 docs/latex/
+
+*.user
+*.user.*
+CMakeLists.txt.user*

@@ -162,10 +162,6 @@ private:
     bool consoleOutput = true;          // 是否输出到控制台
     size_t maxBufferSize = 1000;        // 内存缓冲区最大大小
     std::string currentLogFile;         // 当前日志文件路径
-    
-    // 单例实例
-    static std::unique_ptr<Logger> instance;
-    static std::mutex instanceMutex;
 };
 
 // 便捷的全局日志宏

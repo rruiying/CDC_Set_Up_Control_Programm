@@ -2,37 +2,45 @@
 #include <algorithm>
 #include <numeric>
 
-float MathUtils::calculateAngle(float distance1, float distance2, float sensorSpacing) {
-    if (sensorSpacing <= 0) return 0.0f;
+double MathUtils::calculateAngleFromSensors(double distance1, double distance2, double sensorSpacing) {
+    if (sensorSpacing <= 0) return 0.0;
     
-    float heightDiff = distance2 - distance1;
-    float angleRad = std::atan(heightDiff / sensorSpacing);
+    double heightDiff = distance2 - distance1;
+    double angleRad = std::atan(heightDiff / sensorSpacing);
     return radiansToDegrees(angleRad);
 }
 
-float MathUtils::radiansToDegrees(float radians) {
-    return radians * 180.0f / PI;
+double MathUtils::radiansToDegrees(double radians) {
+    return radians * 180.0 / PI;
 }
 
-float MathUtils::degreesToRadians(float degrees) {
-    return degrees * PI / 180.0f;
+double MathUtils::degreesToRadians(double degrees) {
+    return degrees * PI / 180.0;
 }
 
-float MathUtils::calculateCapacitance(float area_mm2, float distance_mm, float dielectric) {
-    if (distance_mm <= 0) return 0.0f;
+double MathUtils::calculateParallelPlateCapacitance(double plateArea_mm2, double distance_mm, double dielectricConstant, double angle_degrees) {
+    if (distance_mm <= 0) return 0.0;
     
-    // C = ε₀ * εᵣ * A / d (结果为F)
-    float capacitance_F = EPSILON_0 * dielectric * area_mm2 / distance_mm;
-    
-    // 转换为pF (1F = 1e12 pF)
-    return capacitance_F * 1e12f;
+    // 计算角度影响下的有效面积
+    double angleRad = degreesToRadians(angle_degrees);
+    double effectiveArea = plateArea_mm2 * std::cos(angleRad);
+
+    // 转换单位
+    double area_m2 = effectiveArea * 1e-6;  // mm² to m²
+    double distance_m = distance_mm * 1e-3;  // mm to m
+
+    // C = ε₀ * εᵣ * A / d
+    double capacitance_F = EPSILON_0 * dielectricConstant * area_m2 / distance_m;
+
+    // 转换为pF
+    return capacitance_F * 1e12;
 }
 
-float MathUtils::movingAverage(const std::vector<float>& data, int windowSize) {
+double MathUtils::movingAverage(const std::vector<double>& data, int windowSize) {
     if (data.empty() || windowSize <= 0) return 0.0f;
     
     int actualWindow = std::min(windowSize, static_cast<int>(data.size()));
-    float sum = 0.0f;
+    double sum = 0.0;
     
     // 取最后windowSize个数据
     for (int i = data.size() - actualWindow; i < data.size(); ++i) {
@@ -42,56 +50,75 @@ float MathUtils::movingAverage(const std::vector<float>& data, int windowSize) {
     return sum / actualWindow;
 }
 
-float MathUtils::exponentialSmooth(float currentValue, float newValue, float alpha) {
-    alpha = clamp(alpha, 0.0f, 1.0f);
-    return alpha * newValue + (1.0f - alpha) * currentValue;
+double MathUtils::exponentialSmooth(double currentValue, double newValue, double alpha) {
+    alpha = clamp(alpha, 0.0, 1.0);
+    return alpha * newValue + (1.0 - alpha) * currentValue;
 }
 
-float MathUtils::medianFilter(std::vector<float> data) {
-    if (data.empty()) return 0.0f;
+double MathUtils::medianFilter(std::vector<double> data) {
+    if (data.empty()) return 0.0;
     
     std::sort(data.begin(), data.end());
     size_t n = data.size();
     
     if (n % 2 == 0) {
-        return (data[n/2 - 1] + data[n/2]) / 2.0f;
+        return (data[n/2 - 1] + data[n/2]) / 2.0;
     } else {
         return data[n/2];
     }
 }
 
-float MathUtils::clamp(float value, float min, float max) {
+double MathUtils::clamp(double value, double min, double max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
 }
 
-bool MathUtils::isApproximatelyEqual(float a, float b, float tolerance) {
+bool MathUtils::isApproximatelyEqual(double a, double b, double tolerance) {
     return std::abs(a - b) <= tolerance;
 }
 
-float MathUtils::lerp(float start, float end, float t) {
-    t = clamp(t, 0.0f, 1.0f);
+double MathUtils::lerp(double start, double end, double t) {
+    t = clamp(t, 0.0, 1.0);
     return start + t * (end - start);
 }
 
-float MathUtils::mean(const std::vector<float>& data) {
-    if (data.empty()) return 0.0f;
+double MathUtils::mean(const std::vector<double>& data) {
+    if (data.empty()) return 0.0;
     
-    float sum = std::accumulate(data.begin(), data.end(), 0.0f);
+    double sum = std::accumulate(data.begin(), data.end(), 0.0f);
     return sum / data.size();
 }
 
-float MathUtils::standardDeviation(const std::vector<float>& data) {
-    if (data.size() <= 1) return 0.0f;
+double MathUtils::standardDeviation(const std::vector<double>& data) {
+    if (data.size() <= 1) return 0.0;
     
-    float avg = mean(data);
-    float sum = 0.0f;
+    double avg = mean(data);
+    double sum = 0.0;
     
-    for (float value : data) {
-        float diff = value - avg;
+    for (double value : data) {
+        double diff = value - avg;
         sum += diff * diff;
     }
     
     return std::sqrt(sum / (data.size() - 1));
+}
+
+double MathUtils::calculateEffectiveArea(double originalArea_mm2, double angle_degrees) {
+    double angleRad = degreesToRadians(angle_degrees);
+    return originalArea_mm2 * std::cos(angleRad);
+}
+
+bool MathUtils::isInRange(double value, double min, double max) {
+    return value >= min && value <= max;
+}
+
+void MathUtils::minMax(const std::vector<double>& data, double& min, double& max) {
+    if (data.empty()) {
+        min = max = 0.0;
+        return;
+    }
+    
+    min = *std::min_element(data.begin(), data.end());
+    max = *std::max_element(data.begin(), data.end());
 }

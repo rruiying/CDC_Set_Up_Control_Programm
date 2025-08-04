@@ -16,8 +16,8 @@ DataRecorder::~DataRecorder() {
     // 停止自动保存线程
     if (autoSaveEnabled) {
         stopAutoSave = true;
-        if (autoSaveThread && autoSaveThread->joinable()) {
-            autoSaveThread->join();
+        if (m_autoSaveThread && m_autoSaveThread->joinable()) {
+            m_autoSaveThread->join();
         }
     }
 }
@@ -224,15 +224,15 @@ void DataRecorder::setAutoSave(bool enable, const std::string& filename) {
         stopAutoSave = false;
         
         // 启动自动保存线程
-        autoSaveThread = std::make_unique<std::thread>(&DataRecorder::autoSaveThread, this);
+        m_autoSaveThread = std::make_unique<std::thread>(&DataRecorder::autoSaveThreadFunction, this);
         LOG_INFO("Auto-save enabled: " + autoSaveFilename);
         
     } else if (!enable && autoSaveEnabled) {
         autoSaveEnabled = false;
         stopAutoSave = true;
         
-        if (autoSaveThread && autoSaveThread->joinable()) {
-            autoSaveThread->join();
+        if (m_autoSaveThread && m_autoSaveThread->joinable()) {
+            m_autoSaveThread->join();
         }
         LOG_INFO("Auto-save disabled");
     }
@@ -374,7 +374,7 @@ void DataRecorder::enforceMemoryLimit() {
     }
 }
 
-void DataRecorder::autoSaveThread() {
+void DataRecorder::autoSaveThreadFunction() {
     LOG_INFO("Auto-save thread started");
     
     while (!stopAutoSave) {

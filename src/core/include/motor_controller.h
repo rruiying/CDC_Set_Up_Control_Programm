@@ -10,6 +10,7 @@
 #include <chrono>
 #include <vector>
 #include "../../models/include/system_config.h"
+#include "../../hardware/include/command_protocol.h"
 
 // 前向声明
 class SerialInterface;
@@ -176,3 +177,5 @@ private:
     double moveStartHeight;
     double moveStartAngle;
 };
+
+#endif // MOTOR_CONTROLLER_H

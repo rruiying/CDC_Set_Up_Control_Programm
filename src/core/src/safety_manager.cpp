@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <sstream>
 #include <cmath>
+#include <thread>
 
 SafetyManager::SafetyManager() {
     // 从系统配置加载初始限位

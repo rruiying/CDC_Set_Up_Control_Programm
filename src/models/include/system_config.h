@@ -44,8 +44,11 @@ public:
     bool loadFromFile(const std::string& filename);
     bool saveToFile(const std::string& filename) const;
     
-    // 安全限位
+    // ===== 安全限位 =====
     void setSafetyLimits(double minHeight, double maxHeight, double minAngle, double maxAngle);
+    void setHeightLimits(double minHeight, double maxHeight);
+    void setAngleLimits(double minAngle, double maxAngle);
+    
     double getMinHeight() const { return minHeight; }
     double getMaxHeight() const { return maxHeight; }
     double getMinAngle() const { return minAngle; }
@@ -55,19 +58,23 @@ public:
     bool isAngleInRange(double angle) const;
     bool isPositionValid(double height, double angle) const;
     
-    // 电容板参数
+    // ===== 电容板参数 =====
     bool setPlateArea(double area);
     bool setDielectricConstant(double epsilon);
     double getPlateArea() const { return plateArea; }
     double getDielectricConstant() const { return dielectricConstant; }
     
-    // 系统尺寸
+    // ===== 系统尺寸 =====
     void setSystemDimensions(double totalHeight, double middlePlateHeight, double sensorSpacing);
     double getTotalHeight() const { return totalHeight; }
     double getMiddlePlateHeight() const { return middlePlateHeight; }
     double getSensorSpacing() const { return sensorSpacing; }
     
-    // 电机控制
+    // 新增的系统高度设置方法
+    void setSystemHeight(double height) { totalHeight = height; notifyChange(); }
+    double getSystemHeight() const { return totalHeight; }
+    
+    // ===== 电机控制 =====
     void setMotorSpeed(MotorSpeed speed);
     MotorSpeed getMotorSpeed() const { return motorSpeed; }
     std::string getMotorSpeedString() const;
@@ -77,7 +84,7 @@ public:
     double getHomeHeight() const { return homeHeight; }
     double getHomeAngle() const { return homeAngle; }
     
-    // 通信参数
+    // ===== 通信参数 =====
     void setDefaultBaudRate(int baudRate) { defaultBaudRate = baudRate; notifyChange(); }
     void setCommunicationTimeout(int timeout) { communicationTimeout = timeout; notifyChange(); }
     void setRetryCount(int count) { retryCount = count; notifyChange(); }
@@ -88,7 +95,7 @@ public:
     
     std::vector<int> getSupportedBaudRates() const;
     
-    // 数据记录参数
+    // ===== 数据记录参数 =====
     void setSensorUpdateInterval(int interval) { sensorUpdateInterval = interval; notifyChange(); }
     void setMaxRecords(int max) { maxRecords = max; notifyChange(); }
     void setAutoSaveInterval(int interval) { autoSaveInterval = interval; notifyChange(); }
@@ -97,7 +104,7 @@ public:
     int getMaxRecords() const { return maxRecords; }
     int getAutoSaveInterval() const { return autoSaveInterval; }
     
-    // 配置变更通知
+    // ===== 配置变更通知 =====
     using ConfigChangeCallback = std::function<void()>;
     void setConfigChangeCallback(ConfigChangeCallback callback);
     
@@ -106,6 +113,9 @@ public:
     
     // 获取配置摘要
     std::string getConfigSummary() const;
+    
+    // 友元类声明，允许unique_ptr删除
+    friend class std::default_delete<SystemConfig>;
     
 private:
     SystemConfig();
@@ -122,22 +132,22 @@ private:
     
     // 安全限位
     double minHeight = 0.0;
-    double maxHeight = 100.0;
+    double maxHeight = 180.0;    // 改为180mm
     double minAngle = -90.0;
     double maxAngle = 90.0;
     
     // 电容板参数
-    double plateArea = 0.01;        // m²
+    double plateArea = 2500.0;   // mm² (50mm x 50mm)
     double dielectricConstant = 1.0;
     
     // 系统尺寸
-    double totalHeight = 200.0;      // mm
+    double totalHeight = 180.0;      // mm，改为180mm
     double middlePlateHeight = 25.0; // mm
-    double sensorSpacing = 100.0;    // mm
+    double sensorSpacing = 80.0;     // mm，改为80mm
     
     // 电机控制
     MotorSpeed motorSpeed = MotorSpeed::MEDIUM;
-    double homeHeight = 50.0;        // mm
+    double homeHeight = 0.0;         // mm，改为0
     double homeAngle = 0.0;          // degrees
     
     // 通信参数

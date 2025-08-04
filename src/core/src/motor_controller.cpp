@@ -115,7 +115,7 @@ bool MotorController::home() {
     }
     
     // 设置目标位置为原点
-    auto config = SystemConfig::getInstance();
+    const SystemConfig& config = SystemConfig::getInstance();
     targetHeight = config.getHomeHeight();
     targetAngle = config.getHomeAngle();
     

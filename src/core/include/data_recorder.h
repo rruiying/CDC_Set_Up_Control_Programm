@@ -120,9 +120,9 @@ private:
     // 内部方法
     void enforceMaxRecords();
     void enforceMemoryLimit();
-    void autoSaveThread();
+    void autoSaveThreadFunction();  // 重命名避免冲突
     void notifyDataChange();
-    void notifyExportProgress(int current, int total);
+    void notifyExportProgress(int current, int total) const;
     bool shouldCompressRecord(const MeasurementData& existing, const MeasurementData& newData) const;
     size_t estimateRecordSize(const MeasurementData& record) const;
     void updateStatistics(const MeasurementData& measurement);
@@ -139,7 +139,7 @@ private:
     std::atomic<bool> autoSaveEnabled{false};
     std::atomic<int> autoSaveInterval{300000}; // 5分钟默认
     std::string autoSaveFilename;
-    std::unique_ptr<std::thread> autoSaveThread;
+    std::unique_ptr<std::thread> m_autoSaveThread;  // 重命名避免冲突
     std::atomic<bool> stopAutoSave{false};
     std::chrono::system_clock::time_point lastAutoSave;
     

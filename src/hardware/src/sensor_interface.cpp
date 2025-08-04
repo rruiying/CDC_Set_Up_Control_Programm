@@ -1,16 +1,17 @@
-#include "hardware/include/sensor_interface.h"
-#include "hardware/include/serial_interface.h"
-#include "utils/include/logger.h"
+// src/hardware/src/sensor_interface.cpp
+#include "../include/sensor_interface.h"
+#include "../include/qt_serial_interface.h"
+#include "../../utils/include/logger.h"
 #include <QStringList>
 #include <QRegularExpression>
 
-SensorInterface::SensorInterface(SerialInterface* serial, QObject* parent)
+SensorInterface::SensorInterface(QtSerialInterface* serial, QObject* parent)
     : QObject(parent)
     , m_serial(serial)
     , m_pollTimer(new QTimer(this))
 {
     if (m_serial) {
-        connect(m_serial, &SerialInterface::lineReceived,
+        connect(m_serial, &QtSerialInterface::lineReceived,
                 this, &SensorInterface::onSerialDataReceived);
     }
     
@@ -64,7 +65,7 @@ bool SensorInterface::requestCapacitance() {
 
 void SensorInterface::startPolling(int intervalMs) {
     m_pollTimer->start(intervalMs);
-    LOG_INFO(QString("Started sensor polling at %1ms interval").arg(intervalMs));
+    LOG_INFO(QString("Started sensor polling at %1ms interval").arg(intervalMs).toStdString());
 }
 
 void SensorInterface::stopPolling() {

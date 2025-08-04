@@ -5,6 +5,9 @@
 #include "sensor_data.h"
 #include <string>
 #include <cstdint>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 
 /**
  * @brief 测量数据记录类
@@ -26,11 +29,11 @@ public:
     
     /**
      * @brief 带参数的构造函数
-     * @param setHeight 设定高度(mm)
-     * @param setAngle 设定角度(度)
+     * @param height 设定高度(mm)
+     * @param angle 设定角度(度)
      * @param sensorData 传感器数据
      */
-    MeasurementData(double setHeight, double setAngle, const SensorData& sensorData);
+    MeasurementData(double height, double angle, const SensorData& sensorData);
     
     /**
      * @brief 拷贝构造函数
@@ -44,8 +47,8 @@ public:
     
     // Getter方法
     int64_t getTimestamp() const { return timestamp; }
-    double getSetHeight() const { return setHeight; }
-    double getSetAngle() const { return setAngle; }
+    double getSetHeight() const { return m_setHeight; }
+    double getSetAngle() const { return m_setAngle; }
     double getTheoreticalCapacitance() const { return theoreticalCapacitance; }
     double getCapacitanceDifference() const;
     const SensorData& getSensorData() const { return sensorData; }
@@ -100,8 +103,8 @@ private:
     int64_t timestamp;
     
     // 设定值
-    double setHeight;           // 设定高度 (mm)
-    double setAngle;            // 设定角度 (度)
+    double m_setHeight;           // 设定高度 (mm)
+    double m_setAngle;            // 设定角度 (度)
     
     // 传感器数据
     SensorData sensorData;
@@ -118,6 +121,9 @@ private:
     double maxHeight = 100.0;
     double minAngle = -90.0;
     double maxAngle = 90.0;
+
+    // 格式化时间戳的辅助函数
+    std::string formatTimestamp(int64_t timestamp) const;
     
     // 物理常数
     static constexpr double EPSILON_0 = 8.854e-12; // 真空介电常数 (F/m)
