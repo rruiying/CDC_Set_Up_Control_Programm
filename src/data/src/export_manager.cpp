@@ -574,17 +574,19 @@ std::string ExportManager::measurementToCSV(const MeasurementData& data, const E
     
     if (options.includeSensorData) {
         const auto& sensor = data.getSensorData();
-        values.push_back(formatValue(sensor.getUpperSensor1(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getUpperSensor2(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getLowerSensor1(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getLowerSensor2(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getTemperature(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getMeasuredAngle(), options.decimalPlaces));
-        values.push_back(formatValue(sensor.getMeasuredCapacitance(), options.decimalPlaces));
+        // 直接访问公共成员变量，而不是使用不存在的getter方法
+        values.push_back(formatValue(sensor.distanceUpper1, options.decimalPlaces));
+        values.push_back(formatValue(sensor.distanceUpper2, options.decimalPlaces));
+        values.push_back(formatValue(sensor.distanceLower1, options.decimalPlaces));
+        values.push_back(formatValue(sensor.distanceLower2, options.decimalPlaces));
+        values.push_back(formatValue(sensor.temperature, options.decimalPlaces));
+        values.push_back(formatValue(sensor.angle, options.decimalPlaces));
+        values.push_back(formatValue(sensor.capacitance, options.decimalPlaces));
     }
     
     if (options.includeCalculatedValues) {
         const auto& sensor = data.getSensorData();
+        // 这些方法在SensorData中是存在的
         values.push_back(formatValue(sensor.getAverageHeight(), options.decimalPlaces));
         values.push_back(formatValue(sensor.getCalculatedAngle(), options.decimalPlaces));
         values.push_back(formatValue(data.getCapacitanceDifference(), options.decimalPlaces));

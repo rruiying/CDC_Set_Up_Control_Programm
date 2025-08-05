@@ -6,7 +6,6 @@ set(HARDWARE_HEADERS
     include/motor_interface.h
     include/sensor_interface.h
     include/serial_interface.h
-    include/qt_serial_interface.h
 )
 
 set(HARDWARE_SOURCES
@@ -14,7 +13,6 @@ set(HARDWARE_SOURCES
     src/motor_interface.cpp
     src/sensor_interface.cpp
     src/serial_interface.cpp
-    src/qt_serial_interface.cpp
 )
 
 add_library(hardware_lib STATIC
@@ -29,6 +27,7 @@ target_include_directories(hardware_lib PUBLIC
 target_link_libraries(hardware_lib PUBLIC
     Qt5::Core
     Qt5::SerialPort
+    models_lib
     utils_lib
 )
 

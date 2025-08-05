@@ -27,6 +27,7 @@ CsvAnalyzer::~CsvAnalyzer() = default;
 
 // ===== 数据加载与管理 =====
 
+// 修复 loadCsvFile 方法中的 SensorData 设置部分
 bool CsvAnalyzer::loadCsvFile(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -67,8 +68,8 @@ bool CsvAnalyzer::loadCsvFile(const std::string& filename) {
                 sensorData.setUpperSensors(std::stod(fields[4]), std::stod(fields[5]));
                 sensorData.setLowerSensors(std::stod(fields[6]), std::stod(fields[7]));
                 sensorData.setTemperature(std::stod(fields[8]));
-                sensorData.setMeasuredAngle(std::stod(fields[9]));
-                sensorData.setMeasuredCapacitance(std::stod(fields[10]));
+                sensorData.setAngle(std::stod(fields[9]));  // 使用 setAngle 而不是 setMeasuredAngle
+                sensorData.setCapacitance(std::stod(fields[10]));  // 使用 setCapacitance 而不是 setMeasuredCapacitance
                 
                 // 创建测量数据
                 MeasurementData measurement(setHeight, setAngle, sensorData);
@@ -133,11 +134,12 @@ std::vector<MeasurementData> CsvAnalyzer::filterByAngle(double minAngle, double 
     return filtered;
 }
 
+// 修复 filterByTemperature 方法
 std::vector<MeasurementData> CsvAnalyzer::filterByTemperature(double minTemp, double maxTemp) const {
     std::vector<MeasurementData> filtered;
     
     for (const auto& measurement : pImpl->data) {
-        double temp = measurement.getSensorData().getTemperature();
+        double temp = measurement.getSensorData().temperature;  // 直接访问公共成员
         if (temp >= minTemp && temp <= maxTemp) {
             filtered.push_back(measurement);
         }
@@ -287,6 +289,7 @@ ErrorStatistics CsvAnalyzer::calculateErrorStatistics() const {
 
 // ===== 数据准备（用于图表） =====
 
+// 修复 prepareDistanceCapacitanceData 方法
 std::vector<DataPoint> CsvAnalyzer::prepareDistanceCapacitanceData(
     double fixedAngle, double fixedTemp,
     double angleTolerance, double tempTolerance) const {
@@ -296,14 +299,14 @@ std::vector<DataPoint> CsvAnalyzer::prepareDistanceCapacitanceData(
     // 过滤符合固定条件的数据
     for (const auto& measurement : pImpl->data) {
         double angle = measurement.getSetAngle();
-        double temp = measurement.getSensorData().getTemperature();
+        double temp = measurement.getSensorData().temperature;  // 直接访问公共成员
         
         if (std::abs(angle - fixedAngle) <= angleTolerance &&
             std::abs(temp - fixedTemp) <= tempTolerance) {
             
             DataPoint point;
             point.x = measurement.getSetHeight();
-            point.y = measurement.getSensorData().getMeasuredCapacitance();
+            point.y = measurement.getSensorData().capacitance;  // 直接访问公共成员
             point.color = temp; // 温度作为颜色
             points.push_back(point);
         }
@@ -318,6 +321,7 @@ std::vector<DataPoint> CsvAnalyzer::prepareDistanceCapacitanceData(
     return points;
 }
 
+// 修复 prepareAngleCapacitanceData 方法
 std::vector<DataPoint> CsvAnalyzer::prepareAngleCapacitanceData(
     double fixedHeight, double fixedTemp,
     double heightTolerance, double tempTolerance) const {
@@ -326,14 +330,14 @@ std::vector<DataPoint> CsvAnalyzer::prepareAngleCapacitanceData(
     
     for (const auto& measurement : pImpl->data) {
         double height = measurement.getSetHeight();
-        double temp = measurement.getSensorData().getTemperature();
+        double temp = measurement.getSensorData().temperature;  // 直接访问公共成员
         
         if (std::abs(height - fixedHeight) <= heightTolerance &&
             std::abs(temp - fixedTemp) <= tempTolerance) {
             
             DataPoint point;
             point.x = measurement.getSetAngle();
-            point.y = measurement.getSensorData().getMeasuredCapacitance();
+            point.y = measurement.getSensorData().capacitance;  // 直接访问公共成员
             point.color = temp;
             points.push_back(point);
         }
@@ -347,6 +351,7 @@ std::vector<DataPoint> CsvAnalyzer::prepareAngleCapacitanceData(
     return points;
 }
 
+// 修复 prepare3DData 方法
 std::vector<DataPoint> CsvAnalyzer::prepare3DData() const {
     std::vector<DataPoint> points;
     
@@ -354,21 +359,22 @@ std::vector<DataPoint> CsvAnalyzer::prepare3DData() const {
         DataPoint point;
         point.x = measurement.getSetHeight();  // 距离
         point.y = measurement.getSetAngle();   // 角度
-        point.z = measurement.getSensorData().getMeasuredCapacitance(); // 电容
-        point.color = measurement.getSensorData().getTemperature(); // 温度
+        point.z = measurement.getSensorData().capacitance; // 电容 - 直接访问公共成员
+        point.color = measurement.getSensorData().temperature; // 温度 - 直接访问公共成员
         points.push_back(point);
     }
     
     return points;
 }
 
+// 修复 prepareErrorAnalysisData 方法
 std::vector<DataPoint> CsvAnalyzer::prepareErrorAnalysisData() const {
     std::vector<DataPoint> points;
     
     for (const auto& measurement : pImpl->data) {
         DataPoint point;
         point.x = measurement.getTheoreticalCapacitance();  // 理论值
-        point.y = measurement.getSensorData().getMeasuredCapacitance(); // 测量值
+        point.y = measurement.getSensorData().capacitance; // 测量值 - 直接访问公共成员
         points.push_back(point);
     }
     
@@ -411,16 +417,28 @@ double CsvAnalyzer::calculateR2(const std::vector<double>& actual,
     return (ssTotal > 0) ? 1.0 - (ssResidual / ssTotal) : 0.0;
 }
 
+// 修复 extractMeasuredCapacitances 方法
 std::vector<double> CsvAnalyzer::extractMeasuredCapacitances(
     const std::vector<MeasurementData>& data) const {
     std::vector<double> values;
     values.reserve(data.size());
     
     for (const auto& measurement : data) {
-        values.push_back(measurement.getSensorData().getMeasuredCapacitance());
+        values.push_back(measurement.getSensorData().capacitance);  // 直接访问公共成员
     }
     
     return values;
 }
 
+// 添加其他缺失的提取方法实现
+std::vector<double> CsvAnalyzer::extractHeights(const std::vector<MeasurementData>& data) const {
+    std::vector<double> values;
+    values.reserve(data.size());
+    
+    for (const auto& measurement : data) {
+        values.push_back(measurement.getSetHeight());
+    }
+    
+    return values;
+}
 // 其他提取方法类似...

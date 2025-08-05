@@ -16,11 +16,18 @@ add_library(app_lib STATIC
 
 target_include_directories(app_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src  # 添加源码根目录
 )
 
 target_link_libraries(app_lib PUBLIC
     Qt5::Core
     Qt5::Widgets
+    core_lib
+    data_lib
+    hardware_lib
+    models_lib
+    ui_lib
+    utils_lib
 )
 
 set_target_properties(app_lib PROPERTIES AUTOMOC ON)

@@ -8,6 +8,7 @@
 #include <functional>
 #include <complex>
 #include "../../models/include/measurement_data.h"
+#include "../../models/include/data_statistics.h"
 
 /**
  * @brief 数据字段枚举
@@ -60,27 +61,6 @@ enum class TrendDirection {
     DECREASING,
     STABLE,
     OSCILLATING
-};
-
-/**
- * @brief 统计信息结构
- */
-struct DataStatistics {
-    double meanHeight;
-    double meanAngle;
-    double meanCapacitance;
-    double stdDevHeight;
-    double stdDevAngle;
-    double stdDevCapacitance;
-    double minHeight;
-    double maxHeight;
-    double minAngle;
-    double maxAngle;
-    double minCapacitance;
-    double maxCapacitance;
-    double variance;
-    double skewness;
-    double kurtosis;
 };
 
 /**
@@ -197,122 +177,126 @@ struct ChartData3D {
  * - 图表数据准备
  */
 class DataProcessor {
-public:
-    /**
-     * @brief 构造函数
-     */
-    DataProcessor();
-    
-    /**
-     * @brief 析构函数
-     */
-    ~DataProcessor();
-    
-    // 统计分析
-    DataStatistics calculateStatistics(const std::vector<MeasurementData>& data);
-    double calculateCorrelation(const std::vector<MeasurementData>& data,
-                               DataField field1, DataField field2);
-    
-    // 回归分析
-    LinearRegression performLinearRegression(const std::vector<MeasurementData>& data,
+    public:
+        /**
+         * @brief 构造函数
+         */
+        DataProcessor();
+        
+        /**
+         * @brief 析构函数
+         */
+        ~DataProcessor();
+        
+        // 统计分析
+        DataStatistics calculateStatistics(const std::vector<MeasurementData>& data);
+        double calculateCorrelation(const std::vector<MeasurementData>& data,
+                                   DataField field1, DataField field2);
+        
+        // 回归分析
+        LinearRegression performLinearRegression(const std::vector<MeasurementData>& data,
+                                               DataField xField, DataField yField);
+        PolynomialFit performPolynomialFitting(const std::vector<MeasurementData>& data,
+                                              DataField xField, DataField yField, int degree);
+        double predict(const LinearRegression& model, double x);
+        double predict(const PolynomialFit& model, double x);
+        
+        // 数据平滑
+        std::vector<MeasurementData> smoothData(const std::vector<MeasurementData>& data,
+                                               SmoothingMethod method, int windowSize);
+        
+        // 异常值检测
+        std::vector<size_t> detectOutliers(const std::vector<MeasurementData>& data,
+                                           DataField field, double threshold = 2.0);
+        
+        // 数据插值
+        std::vector<MeasurementData> interpolateData(const std::vector<MeasurementData>& data,
+                                                    DataField xField, DataField yField,
+                                                    InterpolationMethod method,
+                                                    int numPoints);
+        
+        // FFT分析
+        FFTResult performFFT(const std::vector<MeasurementData>& data, DataField field);
+        std::vector<size_t> findPeaks(const FFTResult& fft, double threshold);
+        
+        // 数据分组
+        std::map<std::string, std::vector<MeasurementData>> groupData(
+            const std::vector<MeasurementData>& data,
+            std::function<std::string(const MeasurementData&)> groupingFunction);
+        
+        // 趋势分析
+        TrendAnalysis analyzeTrend(const std::vector<MeasurementData>& data, DataField field);
+        
+        // 图表数据准备
+        ChartData2D prepareScatterPlotData(const std::vector<MeasurementData>& data,
                                            DataField xField, DataField yField);
-    PolynomialFit performPolynomialFitting(const std::vector<MeasurementData>& data,
-                                          DataField xField, DataField yField, int degree);
-    double predict(const LinearRegression& model, double x);
-    double predict(const PolynomialFit& model, double x);
+        ChartData3D prepare3DSurfaceData(const std::vector<MeasurementData>& data,
+                                         DataField xField, DataField yField, DataField zField);
+        
+        // 误差分析
+        ErrorAnalysis analyzeError(const std::vector<double>& theoretical,
+                                  const std::vector<double>& measured);
+        
+        // 数据归一化
+        std::vector<MeasurementData> normalizeData(const std::vector<MeasurementData>& data,
+                                                  NormalizationMethod method);
+        
+        // 时间序列分析
+        TimeSeriesAnalysis analyzeTimeSeries(const std::vector<MeasurementData>& data);
+        
+        // 导数和积分
+        std::vector<DerivativePoint> calculateDerivative(const std::vector<MeasurementData>& data,
+                                                        DataField xField, DataField yField);
+        double calculateIntegral(const std::vector<MeasurementData>& data,
+                               DataField xField, DataField yField);
+        
+        // 聚类分析
+        std::vector<std::vector<MeasurementData>> performClustering(
+            const std::vector<MeasurementData>& data,
+            int numClusters,
+            const std::vector<DataField>& features);
+        
+        // 实用方法
+        std::string getFieldName(DataField field) const;
+        std::string getFieldUnit(DataField field) const;
+        
+    private:
+        // 辅助方法
+        double getFieldValue(const MeasurementData& data, DataField field) const;
+        void setFieldValue(MeasurementData& data, DataField field, double value) const;
+        std::vector<double> extractFieldValues(const std::vector<MeasurementData>& data,
+                                             DataField field) const;
+        
+        // 统计计算
+        double calculateMean(const std::vector<double>& values) const;
+        double calculateStdDev(const std::vector<double>& values, double mean) const;
+        double calculateVariance(const std::vector<double>& values, double mean) const;
+        double calculateSkewness(const std::vector<double>& values, double mean, double stdDev) const;
+        double calculateKurtosis(const std::vector<double>& values, double mean, double stdDev) const;
+        
+        // 数学工具
+        std::vector<double> movingAverage(const std::vector<double>& data, int windowSize) const;
+        std::vector<double> gaussianSmooth(const std::vector<double>& data, int windowSize, double sigma) const;
+        std::vector<double> medianFilter(const std::vector<double>& data, int windowSize) const;
+        
+        // 线性代数
+        std::vector<double> gaussianElimination(std::vector<std::vector<double>>& a, 
+                                              std::vector<double>& b) const;
+        
+        // FFT实现
+        std::vector<std::complex<double>> fft(const std::vector<std::complex<double>>& data) const;
+        std::vector<std::complex<double>> ifft(const std::vector<std::complex<double>>& data) const;
+        
+        // 插值实现
+        double linearInterpolate(double x0, double y0, double x1, double y1, double x) const;
+        double cubicInterpolate(const std::vector<double>& x, const std::vector<double>& y, double xi) const;
+        
+        // K-means聚类
+        std::vector<std::vector<size_t>> kMeansClustering(const std::vector<std::vector<double>>& data,
+                                                          int k, int maxIterations = 100) const;
+        
+        // 成员变量
+        mutable std::vector<double> workBuffer; // 工作缓冲区
+    };
     
-    // 数据平滑
-    std::vector<MeasurementData> smoothData(const std::vector<MeasurementData>& data,
-                                           SmoothingMethod method, int windowSize);
-    
-    // 异常值检测
-    std::vector<size_t> detectOutliers(const std::vector<MeasurementData>& data,
-                                       DataField field, double threshold = 2.0);
-    
-    // 数据插值
-    std::vector<MeasurementData> interpolateData(const std::vector<MeasurementData>& data,
-                                                DataField xField, DataField yField,
-                                                InterpolationMethod method,
-                                                int numPoints);
-    
-    // FFT分析
-    FFTResult performFFT(const std::vector<MeasurementData>& data, DataField field);
-    std::vector<size_t> findPeaks(const FFTResult& fft, double threshold);
-    
-    // 数据分组
-    std::map<std::string, std::vector<MeasurementData>> groupData(
-        const std::vector<MeasurementData>& data,
-        std::function<std::string(const MeasurementData&)> groupingFunction);
-    
-    // 趋势分析
-    TrendAnalysis analyzeTrend(const std::vector<MeasurementData>& data, DataField field);
-    
-    // 图表数据准备
-    ChartData2D prepareScatterPlotData(const std::vector<MeasurementData>& data,
-                                       DataField xField, DataField yField);
-    ChartData3D prepare3DSurfaceData(const std::vector<MeasurementData>& data,
-                                     DataField xField, DataField yField, DataField zField);
-    
-    // 误差分析
-    ErrorAnalysis analyzeError(const std::vector<double>& theoretical,
-                              const std::vector<double>& measured);
-    
-    // 数据归一化
-    std::vector<MeasurementData> normalizeData(const std::vector<MeasurementData>& data,
-                                              NormalizationMethod method);
-    
-    // 时间序列分析
-    TimeSeriesAnalysis analyzeTimeSeries(const std::vector<MeasurementData>& data);
-    
-    // 导数和积分
-    std::vector<DerivativePoint> calculateDerivative(const std::vector<MeasurementData>& data,
-                                                    DataField xField, DataField yField);
-    double calculateIntegral(const std::vector<MeasurementData>& data,
-                           DataField xField, DataField yField);
-    
-    // 聚类分析
-    std::vector<std::vector<MeasurementData>> performClustering(
-        const std::vector<MeasurementData>& data,
-        int numClusters,
-        const std::vector<DataField>& features);
-    
-    // 实用方法
-    std::string getFieldName(DataField field) const;
-    std::string getFieldUnit(DataField field) const;
-    
-private:
-    // 辅助方法
-    double getFieldValue(const MeasurementData& data, DataField field) const;
-    void setFieldValue(MeasurementData& data, DataField field, double value) const;
-    std::vector<double> extractFieldValues(const std::vector<MeasurementData>& data,
-                                         DataField field) const;
-    
-    // 统计计算
-    double calculateMean(const std::vector<double>& values) const;
-    double calculateStdDev(const std::vector<double>& values, double mean) const;
-    double calculateVariance(const std::vector<double>& values, double mean) const;
-    double calculateSkewness(const std::vector<double>& values, double mean, double stdDev) const;
-    double calculateKurtosis(const std::vector<double>& values, double mean, double stdDev) const;
-    
-    // 数学工具
-    std::vector<double> movingAverage(const std::vector<double>& data, int windowSize) const;
-    std::vector<double> gaussianSmooth(const std::vector<double>& data, int windowSize, double sigma) const;
-    std::vector<double> medianFilter(const std::vector<double>& data, int windowSize) const;
-    
-    // FFT实现
-    std::vector<std::complex<double>> fft(const std::vector<std::complex<double>>& data) const;
-    std::vector<std::complex<double>> ifft(const std::vector<std::complex<double>>& data) const;
-    
-    // 插值实现
-    double linearInterpolate(double x0, double y0, double x1, double y1, double x) const;
-    double cubicInterpolate(const std::vector<double>& x, const std::vector<double>& y, double xi) const;
-    
-    // K-means聚类
-    std::vector<std::vector<size_t>> kMeansClustering(const std::vector<std::vector<double>>& data,
-                                                      int k, int maxIterations = 100) const;
-    
-    // 成员变量
-    mutable std::vector<double> workBuffer; // 工作缓冲区
-};
-
 #endif // DATA_PROCESSOR_H

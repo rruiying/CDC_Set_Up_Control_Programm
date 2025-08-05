@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # 设置输出目录
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -58,18 +59,25 @@ add_executable(CDC_Control_System
     src/main.cpp
 )
 
-# 链接库
+# 链接库 - 添加 app_lib！
 target_link_libraries(CDC_Control_System
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::Gui
+    # 项目库（按依赖顺序）
+    app_lib         # Application类在这个库中
     ui_lib
     core_lib
     data_lib
     hardware_lib
     models_lib
     utils_lib
-    qcustomplot     # QCustomPlot库
+    # Qt库
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Gui
+    Qt5::SerialPort
+    Qt5::Charts
+    Qt5::PrintSupport
+    # 第三方库
+    qcustomplot
 )
 
 # Windows特定设置

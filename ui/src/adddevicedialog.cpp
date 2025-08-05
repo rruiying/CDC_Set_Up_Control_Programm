@@ -1,6 +1,6 @@
 // ui/src/adddevicedialog.cpp
 #include "../include/adddevicedialog.h"
-#include "ui_adddevicedialog.h"
+#include "../ui_adddevicedialog.h"
 #include "../../src/models/include/device_info.h"
 #include "../../src/hardware/include/serial_interface.h"
 #include "../../src/utils/include/logger.h"

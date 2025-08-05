@@ -19,10 +19,26 @@
     #include <sys/ioctl.h>
 #endif
 
+// 定义 INVALID_HANDLE_VALUE（如果不在 Windows 上）
+#ifndef INVALID_HANDLE_VALUE
+    #define INVALID_HANDLE_VALUE -1
+#endif
+
+// MockSerialPort 类定义（用于测试）
+class MockSerialPort : public SerialInterface {
+    public:
+        std::queue<std::string> mockResponses;
+        std::vector<std::string> sentCommands;
+    };
+
 // 内部实现类（平台相关）
 class SerialInterface::Impl {
 public:
+#ifdef _WIN32
     Impl() : handle(INVALID_HANDLE_VALUE) {}
+#else
+    Impl() : fd(-1) {}
+#endif
     ~Impl() { close(); }
     
     bool open(const std::string& portName, const SerialPortConfig& config);
@@ -31,18 +47,19 @@ public:
     std::vector<uint8_t> read(size_t maxBytes, int timeoutMs);
     int bytesAvailable() const;
     void flush();
+
+    // 测试模式支持
+    std::queue<std::string> mockResponses;
+    std::vector<std::string> mockSentCommands;
     
 private:
 #ifdef _WIN32
     HANDLE handle;
 #else
-    int fd = -1;
+    int fd;
     struct termios oldTermios;
 #endif
-    
-    // 测试模式支持
-    std::queue<std::string> mockResponses;
-    std::vector<std::string> mockSentCommands;
+
     friend class SerialInterface;
 };
 
@@ -187,9 +204,7 @@ bool SerialInterface::sendCommand(const std::string& command) {
     
     if (mockMode) {
         // 模拟模式：记录发送的命令
-        if (auto* mockSerial = dynamic_cast<MockSerialPort*>(this)) {
-            mockSerial->sentCommands.push_back(command);
-        }
+        pImpl->mockSentCommands.push_back(command);
         LOG_INFO_F("Mock TX: %s", command.c_str());
         return true;
     }
@@ -224,12 +239,10 @@ std::vector<uint8_t> SerialInterface::readBytes(size_t count, int timeoutMs) {
     
     if (mockMode) {
         // 模拟模式：返回模拟数据
-        if (auto* mockSerial = dynamic_cast<MockSerialPort*>(this)) {
-            if (!mockSerial->mockResponses.empty()) {
-                std::string response = mockSerial->mockResponses.front();
-                mockSerial->mockResponses.pop_front();
-                return std::vector<uint8_t>(response.begin(), response.end());
-            }
+        if (!pImpl->mockResponses.empty()) {
+            std::string response = pImpl->mockResponses.front();
+            pImpl->mockResponses.pop();
+            return std::vector<uint8_t>(response.begin(), response.end());
         }
         
         // 模拟超时

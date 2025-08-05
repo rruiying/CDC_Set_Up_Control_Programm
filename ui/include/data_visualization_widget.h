@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QFrame>
+#include <QDialog>
 #include <memory>
 #include <vector>
 #include "chart_display_widget.h"

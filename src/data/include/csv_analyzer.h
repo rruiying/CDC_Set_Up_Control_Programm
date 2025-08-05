@@ -7,35 +7,7 @@
 #include <memory>
 #include <functional>
 #include "../../models/include/measurement_data.h"
-
-// 统计数据结构
-struct DataStatistics {
-    size_t dataCount = 0;
-    
-    // 电容统计
-    double meanCapacitance = 0.0;
-    double stdDevCapacitance = 0.0;
-    double minCapacitance = 0.0;
-    double maxCapacitance = 0.0;
-    
-    // 高度统计
-    double meanHeight = 0.0;
-    double stdDevHeight = 0.0;
-    double minHeight = 0.0;
-    double maxHeight = 0.0;
-    
-    // 角度统计
-    double meanAngle = 0.0;
-    double stdDevAngle = 0.0;
-    double minAngle = 0.0;
-    double maxAngle = 0.0;
-    
-    // 温度统计
-    double meanTemperature = 0.0;
-    double stdDevTemperature = 0.0;
-    double minTemperature = 0.0;
-    double maxTemperature = 0.0;
-};
+#include "../../models/include/data_statistics.h"
 
 // 误差统计结构
 struct ErrorStatistics {

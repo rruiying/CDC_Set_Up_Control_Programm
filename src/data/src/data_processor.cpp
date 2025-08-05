@@ -5,6 +5,7 @@
 #include <numeric>
 #include <cmath>
 #include <stdexcept>
+#include <set>
 
 DataProcessor::DataProcessor() {
     workBuffer.reserve(10000); // 预分配工作缓冲区
@@ -142,22 +143,22 @@ LinearRegression DataProcessor::performLinearRegression(const std::vector<Measur
 }
 
 PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<MeasurementData>& data,
-                                                     DataField xField, DataField yField, int degree) {
+    DataField xField, DataField yField, int degree) {
     PolynomialFit result;
     result.degree = degree;
-    
+
     if (data.size() < static_cast<size_t>(degree + 1)) {
         LOG_WARNING("Insufficient data for polynomial fitting");
         return result;
     }
-    
+
     auto xValues = extractFieldValues(data, xField);
     auto yValues = extractFieldValues(data, yField);
-    
+
     // 构建范德蒙矩阵
     int n = data.size();
     int m = degree + 1;
-    
+
     std::vector<std::vector<double>> vandermonde(n, std::vector<double>(m));
     for (int i = 0; i < n; ++i) {
         vandermonde[i][0] = 1.0;
@@ -165,12 +166,12 @@ PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<Measurem
             vandermonde[i][j] = vandermonde[i][j-1] * xValues[i];
         }
     }
-    
+
     // 使用最小二乘法求解
     // 这里使用简化的正规方程方法，实际应用中可能需要更稳定的算法
     std::vector<std::vector<double>> ata(m, std::vector<double>(m, 0.0));
     std::vector<double> atb(m, 0.0);
-    
+
     // 计算 A^T * A 和 A^T * b
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < m; ++j) {
@@ -178,30 +179,30 @@ PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<Measurem
                 ata[i][j] += vandermonde[k][i] * vandermonde[k][j];
             }
         }
-        
+
         for (int k = 0; k < n; ++k) {
             atb[i] += vandermonde[k][i] * yValues[k];
         }
     }
-    
-    // 高斯消元法求解
-    result.coefficients = solveLinearSystem(ata, atb);
-    
+
+    // 简单的高斯消元法求解（替代 solveLinearSystem）
+    result.coefficients = gaussianElimination(ata, atb);
+
     // 计算拟合质量
     double ssTotal = 0.0, ssResidual = 0.0;
     double meanY = calculateMean(yValues);
-    
+
     for (size_t i = 0; i < xValues.size(); ++i) {
-        double predicted = predict(result, xValues[i]);
-        double residual = yValues[i] - predicted;
-        
-        ssResidual += residual * residual;
-        ssTotal += (yValues[i] - meanY) * (yValues[i] - meanY);
+    double predicted = predict(result, xValues[i]);
+    double residual = yValues[i] - predicted;
+
+    ssResidual += residual * residual;
+    ssTotal += (yValues[i] - meanY) * (yValues[i] - meanY);
     }
-    
+
     result.rSquared = (ssTotal > 0) ? 1.0 - (ssResidual / ssTotal) : 0.0;
     result.rmse = std::sqrt(ssResidual / n);
-    
+
     return result;
 }
 
@@ -498,41 +499,41 @@ ChartData2D DataProcessor::prepareScatterPlotData(const std::vector<MeasurementD
 }
 
 ChartData3D DataProcessor::prepare3DSurfaceData(const std::vector<MeasurementData>& data,
-                                              DataField xField, DataField yField, DataField zField) {
+    DataField xField, DataField yField, DataField zField) {
     ChartData3D chartData;
-    
+
     auto xValues = extractFieldValues(data, xField);
     auto yValues = extractFieldValues(data, yField);
     auto zValues = extractFieldValues(data, zField);
-    
+
     // 创建网格
     std::set<double> uniqueX(xValues.begin(), xValues.end());
     std::set<double> uniqueY(yValues.begin(), yValues.end());
-    
+
     chartData.xGrid.assign(uniqueX.begin(), uniqueX.end());
     chartData.yGrid.assign(uniqueY.begin(), uniqueY.end());
-    
+
     // 初始化Z值矩阵
     chartData.zValues.resize(chartData.yGrid.size(), 
-                            std::vector<double>(chartData.xGrid.size(), 0.0));
-    
+    std::vector<double>(chartData.xGrid.size(), 0.0));
+
     // 填充Z值（这里使用最近邻插值）
     for (size_t i = 0; i < data.size(); ++i) {
         auto xIt = std::find(chartData.xGrid.begin(), chartData.xGrid.end(), xValues[i]);
         auto yIt = std::find(chartData.yGrid.begin(), chartData.yGrid.end(), yValues[i]);
-        
+
         if (xIt != chartData.xGrid.end() && yIt != chartData.yGrid.end()) {
             size_t xIdx = std::distance(chartData.xGrid.begin(), xIt);
             size_t yIdx = std::distance(chartData.yGrid.begin(), yIt);
             chartData.zValues[yIdx][xIdx] = zValues[i];
         }
     }
-    
+
     chartData.xLabel = getFieldName(xField) + " (" + getFieldUnit(xField) + ")";
     chartData.yLabel = getFieldName(yField) + " (" + getFieldUnit(yField) + ")";
     chartData.zLabel = getFieldName(zField) + " (" + getFieldUnit(zField) + ")";
     chartData.title = "3D Surface Plot";
-    
+
     return chartData;
 }
 
@@ -588,17 +589,17 @@ double DataProcessor::getFieldValue(const MeasurementData& data, DataField field
         case DataField::ANGLE:
             return data.getSetAngle();
         case DataField::CAPACITANCE:
-            return data.getSensorData().getMeasuredCapacitance();
+            return data.getSensorData().capacitance;  // 直接访问公共成员
         case DataField::TEMPERATURE:
-            return data.getSensorData().getTemperature();
+            return data.getSensorData().temperature;  // 直接访问公共成员
         case DataField::UPPER_SENSOR_1:
-            return data.getSensorData().getUpperSensor1();
+            return data.getSensorData().distanceUpper1;  // 直接访问公共成员
         case DataField::UPPER_SENSOR_2:
-            return data.getSensorData().getUpperSensor2();
+            return data.getSensorData().distanceUpper2;  // 直接访问公共成员
         case DataField::LOWER_SENSOR_1:
-            return data.getSensorData().getLowerSensor1();
+            return data.getSensorData().distanceLower1;  // 直接访问公共成员
         case DataField::LOWER_SENSOR_2:
-            return data.getSensorData().getLowerSensor2();
+            return data.getSensorData().distanceLower2;  // 直接访问公共成员
         case DataField::TIMESTAMP:
             return static_cast<double>(data.getTimestamp());
         default:
@@ -677,5 +678,276 @@ std::vector<double> DataProcessor::movingAverage(const std::vector<double>& data
     return result;
 }
 
+// 添加缺失的辅助方法实现
+void DataProcessor::setFieldValue(MeasurementData& data, DataField field, double value) const {
+    switch (field) {
+        case DataField::HEIGHT:
+            data.setHeight(value);
+            break;
+        case DataField::ANGLE:
+            data.setAngle(value);
+            break;
+        case DataField::CAPACITANCE:
+        case DataField::TEMPERATURE:
+        case DataField::UPPER_SENSOR_1:
+        case DataField::UPPER_SENSOR_2:
+        case DataField::LOWER_SENSOR_1:
+        case DataField::LOWER_SENSOR_2:
+            {
+                // 由于getSensorData()返回const引用，我们需要创建一个新的SensorData对象
+                // 复制现有数据，修改需要的字段，然后设置回去
+                SensorData newSensorData = data.getSensorData();
+                switch(field) {
+                    case DataField::CAPACITANCE:
+                        newSensorData.capacitance = value;
+                        break;
+                    case DataField::TEMPERATURE:
+                        newSensorData.temperature = value;
+                        break;
+                    case DataField::UPPER_SENSOR_1:
+                        newSensorData.distanceUpper1 = value;
+                        break;
+                    case DataField::UPPER_SENSOR_2:
+                        newSensorData.distanceUpper2 = value;
+                        break;
+                    case DataField::LOWER_SENSOR_1:
+                        newSensorData.distanceLower1 = value;
+                        break;
+                    case DataField::LOWER_SENSOR_2:
+                        newSensorData.distanceLower2 = value;
+                        break;
+                    default:
+                        break;
+                }
+                // 假设有setSensorData方法，如果没有，需要查看MeasurementData的实际接口
+                data.updateSensorData(newSensorData);
+            }
+            break;
+        case DataField::TIMESTAMP:
+            // 时间戳通常不应该被修改
+            break;
+    }
+}
+
+std::vector<double> DataProcessor::extractFieldValues(const std::vector<MeasurementData>& data,
+                                                    DataField field) const {
+    std::vector<double> values;
+    values.reserve(data.size());
+    
+    for (const auto& measurement : data) {
+        values.push_back(getFieldValue(measurement, field));
+    }
+    
+    return values;
+}
+
+// 添加高斯消元法实现
+std::vector<double> DataProcessor::gaussianElimination(std::vector<std::vector<double>>& a, 
+                                                      std::vector<double>& b) const {
+    int n = a.size();
+    std::vector<double> x(n);
+    
+    // 前向消元
+    for (int i = 0; i < n - 1; ++i) {
+        // 寻找主元
+        int maxRow = i;
+        for (int k = i + 1; k < n; ++k) {
+            if (std::abs(a[k][i]) > std::abs(a[maxRow][i])) {
+                maxRow = k;
+            }
+        }
+        
+        // 交换行
+        std::swap(a[i], a[maxRow]);
+        std::swap(b[i], b[maxRow]);
+        
+        // 消元
+        for (int k = i + 1; k < n; ++k) {
+            double factor = a[k][i] / a[i][i];
+            for (int j = i; j < n; ++j) {
+                a[k][j] -= factor * a[i][j];
+            }
+            b[k] -= factor * b[i];
+        }
+    }
+    
+    // 回代
+    for (int i = n - 1; i >= 0; --i) {
+        x[i] = b[i];
+        for (int j = i + 1; j < n; ++j) {
+            x[i] -= a[i][j] * x[j];
+        }
+        x[i] /= a[i][i];
+    }
+    
+    return x;
+}
+
+// 添加其他必要的辅助方法实现
+double DataProcessor::calculateVariance(const std::vector<double>& values, double mean) const {
+    if (values.size() < 2) return 0.0;
+    
+    double sum = 0.0;
+    for (double val : values) {
+        sum += (val - mean) * (val - mean);
+    }
+    
+    return sum / (values.size() - 1);
+}
+
+double DataProcessor::calculateSkewness(const std::vector<double>& values, double mean, double stdDev) const {
+    if (values.size() < 3 || stdDev < 1e-10) return 0.0;
+    
+    double sum = 0.0;
+    for (double val : values) {
+        sum += std::pow((val - mean) / stdDev, 3);
+    }
+    
+    return sum * values.size() / ((values.size() - 1) * (values.size() - 2));
+}
+
+double DataProcessor::calculateKurtosis(const std::vector<double>& values, double mean, double stdDev) const {
+    if (values.size() < 4 || stdDev < 1e-10) return 0.0;
+    
+    double sum = 0.0;
+    for (double val : values) {
+        sum += std::pow((val - mean) / stdDev, 4);
+    }
+    
+    double n = values.size();
+    return (n * (n + 1) * sum) / ((n - 1) * (n - 2) * (n - 3)) 
+           - (3 * (n - 1) * (n - 1)) / ((n - 2) * (n - 3));
+}
+
+std::vector<double> DataProcessor::gaussianSmooth(const std::vector<double>& data, 
+                                                 int windowSize, double sigma) const {
+    std::vector<double> result(data.size());
+    std::vector<double> kernel(windowSize);
+    
+    // 生成高斯核
+    double sum = 0.0;
+    int halfWindow = windowSize / 2;
+    for (int i = 0; i < windowSize; ++i) {
+        double x = i - halfWindow;
+        kernel[i] = std::exp(-(x * x) / (2 * sigma * sigma));
+        sum += kernel[i];
+    }
+    
+    // 归一化
+    for (int i = 0; i < windowSize; ++i) {
+        kernel[i] /= sum;
+    }
+    
+    // 应用卷积
+    for (size_t i = 0; i < data.size(); ++i) {
+        double value = 0.0;
+        double weight = 0.0;
+        
+        for (int j = -halfWindow; j <= halfWindow; ++j) {
+            int idx = i + j;
+            if (idx >= 0 && idx < static_cast<int>(data.size())) {
+                value += data[idx] * kernel[j + halfWindow];
+                weight += kernel[j + halfWindow];
+            }
+        }
+        
+        result[i] = (weight > 0) ? value / weight : data[i];
+    }
+    
+    return result;
+}
+
+std::vector<double> DataProcessor::medianFilter(const std::vector<double>& data, int windowSize) const {
+    std::vector<double> result(data.size());
+    int halfWindow = windowSize / 2;
+    
+    for (size_t i = 0; i < data.size(); ++i) {
+        std::vector<double> window;
+        
+        for (int j = -halfWindow; j <= halfWindow; ++j) {
+            int idx = i + j;
+            if (idx >= 0 && idx < static_cast<int>(data.size())) {
+                window.push_back(data[idx]);
+            }
+        }
+        
+        std::sort(window.begin(), window.end());
+        result[i] = window[window.size() / 2];
+    }
+    
+    return result;
+}
+
+// 简单的FFT实现（实际应用中应使用专门的库如FFTW）
+std::vector<std::complex<double>> DataProcessor::fft(const std::vector<std::complex<double>>& data) const {
+    int n = data.size();
+    
+    if (n <= 1) return data;
+    
+    // 分成偶数和奇数部分
+    std::vector<std::complex<double>> even(n/2), odd(n/2);
+    for (int i = 0; i < n/2; ++i) {
+        even[i] = data[2*i];
+        odd[i] = data[2*i + 1];
+    }
+    
+    // 递归计算
+    auto evenFFT = fft(even);
+    auto oddFFT = fft(odd);
+    
+    // 合并结果
+    std::vector<std::complex<double>> result(n);
+    for (int k = 0; k < n/2; ++k) {
+        std::complex<double> t = std::polar(1.0, -2 * M_PI * k / n) * oddFFT[k];
+        result[k] = evenFFT[k] + t;
+        result[k + n/2] = evenFFT[k] - t;
+    }
+    
+    return result;
+}
+
+double DataProcessor::linearInterpolate(double x0, double y0, double x1, double y1, double x) const {
+    if (std::abs(x1 - x0) < 1e-10) return y0;
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+}
+
+double DataProcessor::cubicInterpolate(const std::vector<double>& x, 
+                                     const std::vector<double>& y, double xi) const {
+    // 简单的三次插值实现
+    // 实际应用中应使用更复杂的样条插值
+    size_t n = x.size();
+    if (n < 4) {
+        // 退化为线性插值
+        for (size_t i = 1; i < n; ++i) {
+            if (xi >= x[i-1] && xi <= x[i]) {
+                return linearInterpolate(x[i-1], y[i-1], x[i], y[i], xi);
+            }
+        }
+        return 0.0;
+    }
+    
+    // 找到包含xi的区间
+    size_t i = 0;
+    for (; i < n - 1 && x[i+1] < xi; ++i);
+    
+    // 使用周围的4个点进行三次插值
+    size_t i0 = (i > 0) ? i - 1 : i;
+    size_t i1 = i;
+    size_t i2 = (i < n - 1) ? i + 1 : i;
+    size_t i3 = (i < n - 2) ? i + 2 : i2;
+    
+    double t = (xi - x[i1]) / (x[i2] - x[i1]);
+    double t2 = t * t;
+    double t3 = t2 * t;
+    
+    double p0 = y[i0];
+    double p1 = y[i1];
+    double p2 = y[i2];
+    double p3 = y[i3];
+    
+    return p1 + 0.5 * t * (p2 - p0) +
+           t2 * (p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3) +
+           t3 * (-0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3);
+}
 // 注意：完整的实现需要包含更多辅助方法，如FFT实现、高斯平滑、聚类算法等
 // 这些复杂算法通常会使用专门的数学库（如FFTW、Eigen等）

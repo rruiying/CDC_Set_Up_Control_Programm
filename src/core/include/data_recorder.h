@@ -11,24 +11,7 @@
 #include <thread>
 #include <chrono>
 #include "../../models/include/measurement_data.h"
-
-/**
- * @brief 数据统计信息
- */
-struct DataStatistics {
-    int totalRecords = 0;
-    double averageHeight = 0.0;
-    double averageAngle = 0.0;
-    double averageCapacitance = 0.0;
-    double minHeight = 0.0;
-    double maxHeight = 0.0;
-    double minAngle = 0.0;
-    double maxAngle = 0.0;
-    double minCapacitance = 0.0;
-    double maxCapacitance = 0.0;
-    int64_t firstRecordTime = 0;
-    int64_t lastRecordTime = 0;
-};
+#include "../../models/include/data_statistics.h"
 
 /**
  * @brief 数据记录器类
@@ -115,6 +98,15 @@ public:
     // 实用方法
     std::string getDefaultFilename() const;
     static std::string generateTimestampFilename(const std::string& prefix = "data");
+
+    // 记录控制
+    bool isRecording() const { return autoSaveEnabled.load(); }
+    void stopRecording() { setAutoSave(false); }
+    
+    // 添加测量数据（addMeasurement 是 recordMeasurement 的别名）
+    void addMeasurement(const MeasurementData& measurement) { 
+        recordMeasurement(measurement); 
+    }
     
 private:
     // 内部方法

@@ -15,7 +15,9 @@
 #include "../../src/core/include/sensor_manager.h"
 #include "../../src/core/include/data_recorder.h"
 #include "../../src/data/include/export_manager.h"
+#include "../../src/utils/include/logger.h"
 #include "data_visualization_widget.h"
+#include "chart_3d_widget.h"
 #include <QDateTime>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -28,7 +30,9 @@ QT_END_NAMESPACE
 // 项目头文件
 class DeviceInfo;
 class SerialInterface;
-class Logger;
+
+// 在全局作用域声明
+Q_DECLARE_METATYPE(SensorData)
 
 /**
  * @brief 主窗口类
@@ -42,7 +46,6 @@ class Logger;
  */
 class MainWindow : public QMainWindow
 {
-    Q_DECLARE_METATYPE(SensorData)
     Q_OBJECT
 
 public:
@@ -354,32 +357,6 @@ private:
      * @param timeout 显示时间（毫秒）
      */
     void showStatusMessage(const QString& message, int timeout = 3000);
-
-    /**
-     * @brief 初始化传感器监控UI
-     */
-    void initializeSensorMonitor();
-    
-    /**
-     * @brief 创建传感器管理器
-     */
-    void createSensorManager();
-    
-    /**
-     * @brief 更新传感器监控显示
-     */
-    void updateSensorMonitorDisplay();
-    
-    /**
-     * @brief 计算理论电容值
-     * @return 理论电容值(pF)
-     */
-    double calculateTheoreticalCapacitance() const;
-    
-    /**
-     * @brief 启动传感器监控
-     */
-    void startSensorMonitoring();
     
     // ===== 第二页：电机控制相关方法 =====
     
@@ -562,6 +539,7 @@ private:
     DataVisualizationWidget* dataVisualizationWidget;
     ChartDisplayWidget* chartDisplayWidget;
     std::unique_ptr<CsvAnalyzer> csvAnalyzer;
+    Chart3DWidget* chart3DWidget; 
         
     // 当前图表设置
     ChartType currentChartType;

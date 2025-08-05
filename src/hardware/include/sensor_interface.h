@@ -2,7 +2,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
-#include "../models/include/sensor_data.h"
+#include "../../models/include/sensor_data.h"
 
 class QtSerialInterface;
 

@@ -1816,7 +1816,6 @@ void MainWindow::initializeDataVisualization()
     chart3DWidget->setVisible(false);  // 初始隐藏
     
     // 添加到布局
-    QVBoxLayout* frameLayout = new QVBoxLayout(ui->frame);
     frameLayout->addWidget(chartDisplayWidget);  // 2D图表
     frameLayout->addWidget(chart3DWidget);       // 3D图表
     

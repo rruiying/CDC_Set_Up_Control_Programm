@@ -3,6 +3,7 @@
 #include <QString>
 #include <QStringList>
 #include <QFileInfo>
+#include <QDateTime>  // 添加这个头文件
 
 class FileManager : public QObject {
     Q_OBJECT

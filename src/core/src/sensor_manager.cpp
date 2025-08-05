@@ -89,7 +89,7 @@ bool SensorManager::readSensorsOnce() {
 
 bool SensorManager::hasValidData() const {
     std::lock_guard<std::mutex> lock(mutex);
-    return hasData && latestData.isValid();
+    return hasData && latestData.isAllValid();
 }
 
 SensorData SensorManager::getLatestData() const {
@@ -119,20 +119,24 @@ SensorData SensorManager::getAverageData(size_t count) const {
     
     auto it = dataHistory.rbegin();
     for (size_t i = 0; i < count && it != dataHistory.rend(); ++i, ++it) {
-        sumUpper1 += it->getUpperSensor1();
-        sumUpper2 += it->getUpperSensor2();
-        sumLower1 += it->getLowerSensor1();
-        sumLower2 += it->getLowerSensor2();
-        sumTemp += it->getTemperature();
-        sumAngle += it->getMeasuredAngle();
-        sumCap += it->getMeasuredCapacitance();
+        sumUpper1 += it->distanceUpper1;
+        sumUpper2 += it->distanceUpper2;
+        sumLower1 += it->distanceLower1;
+        sumLower2 += it->distanceLower2;
+        sumTemp += it->temperature;
+        sumAngle += it->angle;
+        sumCap += it->capacitance;
     }
     
-    return SensorData(
-        sumUpper1 / count, sumUpper2 / count,
-        sumLower1 / count, sumLower2 / count,
-        sumTemp / count, sumAngle / count, sumCap / count
-    );
+    // 创建平均数据
+    SensorData avgData;
+    avgData.setUpperSensors(sumUpper1 / count, sumUpper2 / count);
+    avgData.setLowerSensors(sumLower1 / count, sumLower2 / count);
+    avgData.setTemperature(sumTemp / count);
+    avgData.setAngle(sumAngle / count);
+    avgData.setCapacitance(sumCap / count);
+    
+    return avgData;
 }
 
 void SensorManager::setUpdateInterval(int intervalMs) {
@@ -290,15 +294,15 @@ void SensorManager::processNewData(const SensorData& data) {
     notifyDataReceived(data);
     
     LOG_INFO_F("Sensor data updated: Upper[%.1f,%.1f] Lower[%.1f,%.1f] Temp:%.1f°C Angle:%.1f° Cap:%.1fpF",
-               data.getUpperSensor1(), data.getUpperSensor2(),
-               data.getLowerSensor1(), data.getLowerSensor2(),
-               data.getTemperature(), data.getMeasuredAngle(),
-               data.getMeasuredCapacitance());
+               data.distanceUpper1, data.distanceUpper2,
+               data.distanceLower1, data.distanceLower2,
+               data.temperature, data.angle,
+               data.capacitance);
 }
 
 bool SensorManager::isDataValid(const SensorData& data) const {
     // 使用SensorData自己的验证
-    return data.isValid();
+    return data.isAllValid();
 }
 
 bool SensorManager::shouldFilterData(const SensorData& newData) const {
@@ -307,7 +311,7 @@ bool SensorManager::shouldFilterData(const SensorData& newData) const {
     }
     
     // 计算与上次数据的变化百分比
-    auto calculateChange = [](double oldVal, double newVal) -> double {
+    auto calculateChange = [this](double oldVal, double newVal) -> double {
         if (std::abs(oldVal) < 0.001) {
             return std::abs(newVal) > filterThreshold ? 100.0 : 0.0;
         }
@@ -315,8 +319,8 @@ bool SensorManager::shouldFilterData(const SensorData& newData) const {
     };
     
     // 检查各个传感器的变化
-    double changeUpper1 = calculateChange(latestData.getUpperSensor1(), newData.getUpperSensor1());
-    double changeUpper2 = calculateChange(latestData.getUpperSensor2(), newData.getUpperSensor2());
+    double changeUpper1 = calculateChange(latestData.distanceUpper1, newData.distanceUpper1);
+    double changeUpper2 = calculateChange(latestData.distanceUpper2, newData.distanceUpper2);
     
     // 如果任何传感器变化超过阈值，过滤数据
     return changeUpper1 > filterThreshold || changeUpper2 > filterThreshold;

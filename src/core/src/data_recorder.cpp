@@ -289,7 +289,8 @@ DataStatistics DataRecorder::getStatistics() const {
         return stats;
     }
     
-    stats.totalRecords = measurements.size();
+    // 使用新的命名方式
+    stats.dataCount = measurements.size();  // 原来是 stats.totalRecords
     stats.firstRecordTime = measurements.front().getTimestamp();
     stats.lastRecordTime = measurements.back().getTimestamp();
     
@@ -322,9 +323,10 @@ DataStatistics DataRecorder::getStatistics() const {
         stats.maxCapacitance = std::max(stats.maxCapacitance, cap);
     }
     
-    stats.averageHeight = sumHeight / stats.totalRecords;
-    stats.averageAngle = sumAngle / stats.totalRecords;
-    stats.averageCapacitance = sumCapacitance / stats.totalRecords;
+    // 使用新的命名方式
+    stats.meanHeight = sumHeight / stats.dataCount;  // 原来是 stats.averageHeight
+    stats.meanAngle = sumAngle / stats.dataCount;    // 原来是 stats.averageAngle
+    stats.meanCapacitance = sumCapacitance / stats.dataCount;  // 原来是 stats.averageCapacitance
     
     cachedStatistics = stats;
     statisticsValid = true;
