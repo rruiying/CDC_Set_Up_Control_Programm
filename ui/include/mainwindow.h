@@ -229,16 +229,16 @@ private slots:
      */
     void updateLogDisplay();
 
-    // 第五页槽函数
-    void onChartTypeChanged(int index);
-    void onDataSourceChanged(int index);
-    void onLoadCsvClicked();
-    void onChartSettingsChanged();
-    void onShowGridChanged(bool checked);
-    void onAutoScaleChanged(bool checked);
-    void onChartRangeChanged();
-    void updateChartStatistics();
-    void onChartDataUpdated(int pointCount);
+    // // 第五页槽函数
+    // void onChartTypeChanged(int index);
+    // void onDataSourceChanged(int index);
+    // void onLoadCsvClicked();
+    // void onChartSettingsChanged();
+    // void onShowGridChanged(bool checked);
+    // void onAutoScaleChanged(bool checked);
+    // void onChartRangeChanged();
+    // void updateChartStatistics();
+    // void onChartDataUpdated(int pointCount);
 
 private:
     // ===== 第一页：设备管理相关方法 =====
@@ -488,10 +488,15 @@ private:
      */
     void forceLogUpdate();
 
-    // ===== 第五页：数据可视化方法 =====
-    void initializeDataVisualization();
-    void setupDataVisualizationUI();
-    void connectDataVisualizationSignals();
+    // ===== 增强的日志方法 =====
+    void logError(const QString& error, const QString& context = "");
+    void logWarning(const QString& warning, const QString& context = "");
+    void logInfo(const QString& info, const QString& context = "");
+
+    // // ===== 第五页：数据可视化方法 =====
+    // void initializeDataVisualization();
+    // void setupDataVisualizationUI();
+    // void connectDataVisualizationSignals();
 
 private:
     // UI对象

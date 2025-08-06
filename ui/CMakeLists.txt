@@ -27,7 +27,7 @@ set(UI_SOURCES
 set(UI_HEADERS
     include/mainwindow.h
     include/adddevicedialog.h
-    include/comfirmdialog.h
+    include/confirmdialog.h
     include/errordialog.h
     # 暂时注释掉图表相关文件
     # include/chart_3d_widget.h

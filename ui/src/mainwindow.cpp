@@ -18,6 +18,9 @@
 #include <QTextStream>
 #include <QDateTime>
 #include <QScrollBar>
+#include <QDebug>          // 添加这行
+#include <QMessageBox>     // 如果需要的话
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -44,7 +47,17 @@ MainWindow::MainWindow(QWidget *parent)
     , currentLogLevel(LogLevel::ALL)
     , lastDisplayedLogCount(0)
 {
+    qDebug() << "=== MainWindow构造函数开始 ===";
+    qDebug() << "ui指针初始化完成:" << ui;
+
     ui->setupUi(this);
+
+    qDebug() << "setupUi调用完成";
+
+    qDebug() << "检查doubleSpinBox_3:" << ui->doubleSpinBox_3;
+    if (!ui->doubleSpinBox_3) {
+        qCritical() << "警告：setupUi后doubleSpinBox_3仍为空！";
+    }
     
     // 设置窗口属性
     setWindowTitle("CDC控制系统 v1.0");
@@ -57,8 +70,8 @@ MainWindow::MainWindow(QWidget *parent)
     initializeMotorControl();
     initializeSensorMonitor(); // 添加第三页初始化
     initializeLogViewer(); // 添加第四页初始化
-    // 初始化第五页（数据可视化）
-    initializeDataVisualization();
+    // // 初始化第五页（数据可视化）
+    // initializeDataVisualization();
     
     // 设置初始状态
     isInitialized = true;
@@ -345,28 +358,6 @@ void MainWindow::onCommandLineReturnPressed()
     onSendCommandClicked();
 }
 
-// ===== 串口通信回调实现 =====
-
-void MainWindow::onSerialConnectionChanged(bool connected)
-{
-    DeviceInfo* device = getCurrentSelectedDevice();
-    if (device) {
-        if (connected) {
-            device->setConnectionStatus(ConnectionStatus::CONNECTED);
-            showStatusMessage(QString("设备 '%1' 连接成功")
-                             .arg(QString::fromStdString(device->getName())));
-        } else {
-            device->setConnectionStatus(ConnectionStatus::DISCONNECTED);
-            showStatusMessage(QString("设备 '%1' 连接断开")
-                             .arg(QString::fromStdString(device->getName())));
-        }
-        
-        updateDeviceListWidget();
-        updateSelectedDeviceDisplay();
-        updateDeviceButtons();
-    }
-}
-
 void MainWindow::onSerialDataReceived(const QString& data)
 {
     addCommunicationLog(data, false); // 接收的数据
@@ -607,11 +598,6 @@ QString MainWindow::getDeviceDisplayText(const DeviceInfo& device) const
 
 // ===== 通用辅助方法实现 =====
 
-void MainWindow::logUserOperation(const QString& operation)
-{
-    Logger::getInstance().logOperation("MainWindow", operation.toStdString());
-}
-
 void MainWindow::showStatusMessage(const QString& message, int timeout)
 {
     if (ui->statusbar) {
@@ -675,8 +661,27 @@ void MainWindow::initializeMotorControl()
 
 void MainWindow::setupMotorControlUI()
 {
+
+    qDebug() << "=== setupMotorControlUI开始 ===";
+    qDebug() << "this指针:" << this;
+    qDebug() << "ui指针:" << ui;
+    
+    if (!ui) {
+        qCritical() << "致命错误：ui指针为空！";
+        return;
+    }
+    
+    qDebug() << "检查doubleSpinBox_3:" << ui->doubleSpinBox_3;
+    
+    if (!ui->doubleSpinBox_3) {
+        qCritical() << "doubleSpinBox_3 为空指针！";
+        return;
+    }
+
     // 从系统配置加载安全限位
     auto& config = SystemConfig::getInstance();
+
+    qDebug() << "准备设置doubleSpinBox_3的值:" << config.getMaxHeight();
     
     // 设置安全限位SpinBox的默认值
     ui->doubleSpinBox_3->setValue(config.getMaxHeight());  // 最大高度
@@ -754,7 +759,7 @@ void MainWindow::onMoveToPositionClicked()
     }
     
     if (!motorController) {
-        ErrorDialog::showError(this, ErrorDialog::SystemError, "电机控制器初始化失败");
+        ErrorDialog::showError(this, ErrorDialog::HardwareError, "电机控制器初始化失败");
         return;
     }
     
@@ -795,7 +800,7 @@ void MainWindow::onHomePositionClicked()
     }
     
     if (!motorController) {
-        ErrorDialog::showError(this, ErrorDialog::SystemError, "电机控制器初始化失败");
+        ErrorDialog::showError(this, ErrorDialog::HardwareError, "电机控制器初始化失败");
         return;
     }
     
@@ -1183,7 +1188,7 @@ void MainWindow::onRecordDataClicked()
         showStatusMessage(QString("数据已记录 (共%1条)").arg(dataRecorder->getRecordCount()));
         
     } catch (const std::exception& e) {
-        ErrorDialog::showError(this, ErrorDialog::SystemError, 
+        ErrorDialog::showError(this, ErrorDialog::HardwareError, 
                               QString("记录数据失败: %1").arg(e.what()));
     }
 }
@@ -1242,7 +1247,7 @@ void MainWindow::onExportDataClicked()
         }
         
     } catch (const std::exception& e) {
-        ErrorDialog::showError(this, ErrorDialog::SystemError, 
+        ErrorDialog::showError(this, ErrorDialog::HardwareError, 
                               QString("导出过程中发生错误: %1").arg(e.what()));
     }
 }
@@ -1251,17 +1256,17 @@ void MainWindow::onSensorDataReceived(const SensorData& data)
 {
     // 更新当前传感器数据
     currentSensorData = data;
-    hasValidSensorData = data.isValid();
+    hasValidSensorData = data.isAllValid();
     
     // 更新UI显示
     updateSensorMonitorDisplay();
     
     // 在日志中记录（仅用于调试，可以设置日志级别控制）
-    if (data.isValid()) {
+    if (data.isAllValid()) {
         LOG_INFO_F("Sensor data updated: Upper[%.1f,%.1f] Lower[%.1f,%.1f] Temp:%.1f°C",
-                   data.getUpperSensor1(), data.getUpperSensor2(),
-                   data.getLowerSensor1(), data.getLowerSensor2(),
-                   data.getTemperature());
+                   data.distanceUpper1, data.distanceUpper2,
+                   data.distanceLower1, data.distanceLower2,
+                   data.temperature);
     }
 }
 
@@ -1321,15 +1326,15 @@ void MainWindow::updateSensorMonitorDisplay()
     
     // 更新Primary Measurements
     double boardDistance = currentSensorData.getAverageHeight();
-    double boardAngle = currentSensorData.getMeasuredAngle();
-    double temperature = currentSensorData.getTemperature();
+    double boardAngle = currentSensorData.angle;
+    double temperature = currentSensorData.temperature;
     
     ui->label_23->setText(QString("%.1f mm").arg(boardDistance));
     ui->label_25->setText(QString("%.1f°").arg(boardAngle));
     ui->label_27->setText(QString("%.1f°C").arg(temperature));
     
     // 更新Capacitance Data
-    double measuredCap = currentSensorData.getMeasuredCapacitance();
+    double measuredCap = currentSensorData.capacitance;
     double theoreticalCap = calculateTheoreticalCapacitance();
     double difference = measuredCap - theoreticalCap;
     
@@ -1338,13 +1343,13 @@ void MainWindow::updateSensorMonitorDisplay()
     ui->label_34->setText(QString("%.1f pF").arg(difference));
     
     // 更新Detailed Sensor Data
-    ui->label_44->setText(QString("%.0f mm").arg(currentSensorData.getUpperSensor1()));
-    ui->label_45->setText(QString("%.0f mm").arg(currentSensorData.getUpperSensor2()));
+    ui->label_44->setText(QString("%.0f mm").arg(currentSensorData.distanceUpper1));
+    ui->label_45->setText(QString("%.0f mm").arg(currentSensorData.distanceUpper2));
     ui->label_65->setText(QString("%.0f mm").arg(currentSensorData.getAverageHeight()));
     ui->label_62->setText(QString("%.1f°").arg(currentSensorData.getCalculatedAngle()));
     
-    ui->label_53->setText(QString("%.0f mm").arg(currentSensorData.getLowerSensor1()));
-    ui->label_54->setText(QString("%.0f mm").arg(currentSensorData.getLowerSensor2()));
+    ui->label_53->setText(QString("%.0f mm").arg(currentSensorData.distanceLower1));
+    ui->label_54->setText(QString("%.0f mm").arg(currentSensorData.distanceLower2));
     ui->label_56->setText(QString("%.0f mm").arg(currentSensorData.getAverageGroundDistance()));
     ui->label_64->setText(QString("%.0f mm").arg(currentSensorData.getCalculatedUpperDistance()));
 }
@@ -1399,36 +1404,6 @@ void MainWindow::stopSensorMonitoring()
     }
 }
 
-// ===== 设备连接状态变化处理 =====
-
-// 修改现有的设备连接回调，添加传感器管理
-void MainWindow::onSerialConnectionChanged(bool connected)
-{
-    DeviceInfo* device = getCurrentSelectedDevice();
-    if (device) {
-        if (connected) {
-            device->setConnectionStatus(ConnectionStatus::CONNECTED);
-            showStatusMessage(QString("设备 '%1' 连接成功")
-                             .arg(QString::fromStdString(device->getName())));
-            
-            // 启动传感器监控
-            startSensorMonitoring();
-        } else {
-            device->setConnectionStatus(ConnectionStatus::DISCONNECTED);
-            showStatusMessage(QString("设备 '%1' 连接断开")
-                             .arg(QString::fromStdString(device->getName())));
-            
-            // 停止传感器监控
-            stopSensorMonitoring();
-        }
-        
-        updateDeviceListWidget();
-        updateSelectedDeviceDisplay();
-        updateDeviceButtons();
-        updateMotorControlButtons(); // 第二页按钮状态
-    }
-}
-
 // ===== 第四页：日志查看UI初始化 =====
 
 void MainWindow::initializeLogViewer()
@@ -1449,7 +1424,7 @@ void MainWindow::initializeLogViewer()
     
     // 设置日志显示区域属性
     ui->textEdit_2->setReadOnly(true);
-    ui->textEdit_2->setMaximumBlockCount(MAX_LOG_DISPLAY_LINES); // 限制最大行数
+    ui->textEdit_2->document()->setMaximumBlockCount(MAX_LOG_DISPLAY_LINES); // 限制最大行数
     
     // 设置字体（等宽字体便于阅读）
     QFont logFont("Consolas, Monaco, monospace");
@@ -1753,7 +1728,7 @@ void MainWindow::onSerialConnectionChanged(bool connected)
 }
 
 // 增强的错误记录方法
-void MainWindow::logError(const QString& error, const QString& context = "")
+void MainWindow::logError(const QString& error, const QString& context)
 {
     QString fullMessage = context.isEmpty() ? error : QString("[%1] %2").arg(context, error);
     Logger::getInstance().error(fullMessage.toStdString());
@@ -1764,7 +1739,7 @@ void MainWindow::logError(const QString& error, const QString& context = "")
     }
 }
 
-void MainWindow::logWarning(const QString& warning, const QString& context = "")
+void MainWindow::logWarning(const QString& warning, const QString& context)
 {
     QString fullMessage = context.isEmpty() ? warning : QString("[%1] %2").arg(context, warning);
     Logger::getInstance().warning(fullMessage.toStdString());
@@ -1775,7 +1750,7 @@ void MainWindow::logWarning(const QString& warning, const QString& context = "")
     }
 }
 
-void MainWindow::logInfo(const QString& info, const QString& context = "")
+void MainWindow::logInfo(const QString& info, const QString& context)
 {
     QString fullMessage = context.isEmpty() ? info : QString("[%1] %2").arg(context, info);
     Logger::getInstance().info(fullMessage.toStdString());
@@ -1786,562 +1761,562 @@ void MainWindow::logInfo(const QString& info, const QString& context = "")
     }
 }
 
-// ===== 第五页：数据可视化初始化 =====
+// // ===== 第五页：数据可视化初始化 =====
 
-void MainWindow::initializeDataVisualization()
-{
-    // 创建CSV分析器
-    csvAnalyzer = std::make_unique<CsvAnalyzer>();
+// void MainWindow::initializeDataVisualization()
+// {
+//     // 创建CSV分析器
+//     csvAnalyzer = std::make_unique<CsvAnalyzer>();
     
-    // 创建图表显示控件并添加到frame中
-    chartDisplayWidget = new ChartDisplayWidget(ui->frame);
-    QVBoxLayout* frameLayout = new QVBoxLayout(ui->frame);
-    frameLayout->setContentsMargins(0, 0, 0, 0);
-    frameLayout->addWidget(chartDisplayWidget);
-    ui->frame->setLayout(frameLayout);
+//     // 创建图表显示控件并添加到frame中
+//     chartDisplayWidget = new ChartDisplayWidget(ui->frame);
+//     QVBoxLayout* frameLayout = new QVBoxLayout(ui->frame);
+//     frameLayout->setContentsMargins(0, 0, 0, 0);
+//     frameLayout->addWidget(chartDisplayWidget);
+//     ui->frame->setLayout(frameLayout);
     
-    // 设置UI
-    setupDataVisualizationUI();
+//     // 设置UI
+//     setupDataVisualizationUI();
     
-    // 连接信号槽
-    connectDataVisualizationSignals();
+//     // 连接信号槽
+//     connectDataVisualizationSignals();
     
-    // 初始化状态
-    currentChartType = ChartType::DISTANCE_CAPACITANCE;
-    currentDataSource = DataSource::CSV_FILE;
-    isLoadingData = false;
+//     // 初始化状态
+//     currentChartType = ChartType::DISTANCE_CAPACITANCE;
+//     currentDataSource = DataSource::CSV_FILE;
+//     isLoadingData = false;
 
-    // 创建3D图表控件（仅在3D模式时显示）
-    chart3DWidget = new Chart3DWidget(this);
-    chart3DWidget->setVisible(false);  // 初始隐藏
+//     // 创建3D图表控件（仅在3D模式时显示）
+//     chart3DWidget = new Chart3DWidget(this);
+//     chart3DWidget->setVisible(false);  // 初始隐藏
     
-    // 添加到布局
-    frameLayout->addWidget(chartDisplayWidget);  // 2D图表
-    frameLayout->addWidget(chart3DWidget);       // 3D图表
+//     // 添加到布局
+//     frameLayout->addWidget(chartDisplayWidget);  // 2D图表
+//     frameLayout->addWidget(chart3DWidget);       // 3D图表
     
-    // 更新初始显示
-    updateChartStatistics();
+//     // 更新初始显示
+//     updateChartStatistics();
     
-    logUserOperation("Data visualization initialized");
-}
+//     logUserOperation("Data visualization initialized");
+// }
 
-void MainWindow::setupDataVisualizationUI()
-{
-    // 设置图表类型下拉框
-    ui->comboBox_3->clear();
-    ui->comboBox_3->addItem("距离-电容分析", static_cast<int>(ChartType::DISTANCE_CAPACITANCE));
-    ui->comboBox_3->addItem("角度-电容分析", static_cast<int>(ChartType::ANGLE_CAPACITANCE));
-    ui->comboBox_3->addItem("3D 距离-角度-电容", static_cast<int>(ChartType::DISTANCE_ANGLE_CAPACITANCE_3D));
-    ui->comboBox_3->addItem("温度-电容分析", static_cast<int>(ChartType::TEMPERATURE_CAPACITANCE));
-    ui->comboBox_3->addItem("误差分析", static_cast<int>(ChartType::ERROR_ANALYSIS));
+// void MainWindow::setupDataVisualizationUI()
+// {
+//     // 设置图表类型下拉框
+//     ui->comboBox_3->clear();
+//     ui->comboBox_3->addItem("距离-电容分析", static_cast<int>(ChartType::DISTANCE_CAPACITANCE));
+//     ui->comboBox_3->addItem("角度-电容分析", static_cast<int>(ChartType::ANGLE_CAPACITANCE));
+//     ui->comboBox_3->addItem("3D 距离-角度-电容", static_cast<int>(ChartType::DISTANCE_ANGLE_CAPACITANCE_3D));
+//     ui->comboBox_3->addItem("温度-电容分析", static_cast<int>(ChartType::TEMPERATURE_CAPACITANCE));
+//     ui->comboBox_3->addItem("误差分析", static_cast<int>(ChartType::ERROR_ANALYSIS));
     
-    // 设置数据源下拉框
-    ui->comboBox_4->clear();
-    ui->comboBox_4->addItem("CSV文件", static_cast<int>(DataSource::CSV_FILE));
-    ui->comboBox_4->addItem("当前记录数据", static_cast<int>(DataSource::REAL_TIME));
+//     // 设置数据源下拉框
+//     ui->comboBox_4->clear();
+//     ui->comboBox_4->addItem("CSV文件", static_cast<int>(DataSource::CSV_FILE));
+//     ui->comboBox_4->addItem("当前记录数据", static_cast<int>(DataSource::REAL_TIME));
     
-    // 设置范围控件
-    ui->doubleSpinBox_4->setRange(-1000.0, 1000.0);
-    ui->doubleSpinBox_4->setValue(0.0);
-    ui->doubleSpinBox_4->setSuffix(" mm");
+//     // 设置范围控件
+//     ui->doubleSpinBox_4->setRange(-1000.0, 1000.0);
+//     ui->doubleSpinBox_4->setValue(0.0);
+//     ui->doubleSpinBox_4->setSuffix(" mm");
     
-    ui->doubleSpinBox_5->setRange(-1000.0, 1000.0);
-    ui->doubleSpinBox_5->setValue(100.0);
-    ui->doubleSpinBox_5->setSuffix(" mm");
+//     ui->doubleSpinBox_5->setRange(-1000.0, 1000.0);
+//     ui->doubleSpinBox_5->setValue(100.0);
+//     ui->doubleSpinBox_5->setSuffix(" mm");
     
-    // 设置默认选项
-    ui->checkBox->setChecked(true);   // Show Grid
-    ui->checkBox_2->setChecked(true); // Auto Scale
+//     // 设置默认选项
+//     ui->checkBox->setChecked(true);   // Show Grid
+//     ui->checkBox_2->setChecked(true); // Auto Scale
     
-    // 初始化统计显示
-    ui->label_85->setText("0");      // Data Points
-    ui->label_87->setText("N/A");    // R² Value
-    ui->label_89->setText("N/A");    // RMSE
-    ui->label_91->setText("N/A");    // Max Error
-    ui->label_93->setText("N/A");    // Mean Error
-}
+//     // 初始化统计显示
+//     ui->label_85->setText("0");      // Data Points
+//     ui->label_87->setText("N/A");    // R² Value
+//     ui->label_89->setText("N/A");    // RMSE
+//     ui->label_91->setText("N/A");    // Max Error
+//     ui->label_93->setText("N/A");    // Mean Error
+// }
 
-void MainWindow::connectDataVisualizationSignals()
-{
-    // 图表类型选择
-    connect(ui->comboBox_3, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onChartTypeChanged);
+// void MainWindow::connectDataVisualizationSignals()
+// {
+//     // 图表类型选择
+//     connect(ui->comboBox_3, QOverload<int>::of(&QComboBox::currentIndexChanged),
+//             this, &MainWindow::onChartTypeChanged);
     
-    // 数据源选择
-    connect(ui->comboBox_4, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onDataSourceChanged);
+//     // 数据源选择
+//     connect(ui->comboBox_4, QOverload<int>::of(&QComboBox::currentIndexChanged),
+//             this, &MainWindow::onDataSourceChanged);
     
-    // 加载CSV按钮
-    connect(ui->pushButton_18, &QPushButton::clicked,
-            this, &MainWindow::onLoadCsvClicked);
+//     // 加载CSV按钮
+//     connect(ui->pushButton_18, &QPushButton::clicked,
+//             this, &MainWindow::onLoadCsvClicked);
     
-    // 图表设置
-    connect(ui->checkBox, &QCheckBox::toggled,
-            this, &MainWindow::onShowGridChanged);
+//     // 图表设置
+//     connect(ui->checkBox, &QCheckBox::toggled,
+//             this, &MainWindow::onShowGridChanged);
     
-    connect(ui->checkBox_2, &QCheckBox::toggled,
-            this, &MainWindow::onAutoScaleChanged);
+//     connect(ui->checkBox_2, &QCheckBox::toggled,
+//             this, &MainWindow::onAutoScaleChanged);
     
-    connect(ui->doubleSpinBox_4, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &MainWindow::onChartRangeChanged);
+//     connect(ui->doubleSpinBox_4, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+//             this, &MainWindow::onChartRangeChanged);
     
-    connect(ui->doubleSpinBox_5, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &MainWindow::onChartRangeChanged);
+//     connect(ui->doubleSpinBox_5, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+//             this, &MainWindow::onChartRangeChanged);
     
-    // 连接图表控件信号
-    if (chartDisplayWidget) {
-        connect(chartDisplayWidget, &ChartDisplayWidget::dataUpdated,
-                this, &MainWindow::onChartDataUpdated);
+//     // 连接图表控件信号
+//     if (chartDisplayWidget) {
+//         connect(chartDisplayWidget, &ChartDisplayWidget::dataUpdated,
+//                 this, &MainWindow::onChartDataUpdated);
         
-        connect(chartDisplayWidget, &ChartDisplayWidget::dataPointClicked,
-                [this](double x, double y) {
-                    showStatusMessage(QString("数据点: X=%.2f, Y=%.2f").arg(x).arg(y));
-                });
-    }
-}
+//         connect(chartDisplayWidget, &ChartDisplayWidget::dataPointClicked,
+//                 [this](double x, double y) {
+//                     showStatusMessage(QString("数据点: X=%.2f, Y=%.2f").arg(x).arg(y));
+//                 });
+//     }
+// }
 
-// ===== 第五页：槽函数实现 =====
+// // ===== 第五页：槽函数实现 =====
 
-void MainWindow::onChartTypeChanged(int index)
-{
-    if (index < 0) return;
+// void MainWindow::onChartTypeChanged(int index)
+// {
+//     if (index < 0) return;
     
-    ChartType newType = static_cast<ChartType>(ui->comboBox_3->itemData(index).toInt());
-    currentChartType = newType;
+//     ChartType newType = static_cast<ChartType>(ui->comboBox_3->itemData(index).toInt());
+//     currentChartType = newType;
 
-    if (type == ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
-        // 显示3D图表，隐藏2D图表
-        chartDisplayWidget->setVisible(false);
-        chart3DWidget->setVisible(true);
+//     if (type == ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
+//         // 显示3D图表，隐藏2D图表
+//         chartDisplayWidget->setVisible(false);
+//         chart3DWidget->setVisible(true);
         
-        // 设置3D数据
-        if (csvAnalyzer && csvAnalyzer->hasValidData()) {
-            auto data3D = csvAnalyzer->prepare3DData();
-            chart3DWidget->setData(data3D);
-        }
-    } else {
-        // 显示2D图表，隐藏3D图表
-        chartDisplayWidget->setVisible(true);
-        chart3DWidget->setVisible(false);
+//         // 设置3D数据
+//         if (csvAnalyzer && csvAnalyzer->hasValidData()) {
+//             auto data3D = csvAnalyzer->prepare3DData();
+//             chart3DWidget->setData(data3D);
+//         }
+//     } else {
+//         // 显示2D图表，隐藏3D图表
+//         chartDisplayWidget->setVisible(true);
+//         chart3DWidget->setVisible(false);
         
-        // 根据图表类型更新轴标签
-        ChartConfig config = chartDisplayWidget->getChartConfig();
+//         // 根据图表类型更新轴标签
+//         ChartConfig config = chartDisplayWidget->getChartConfig();
         
-        switch (newType) {
-            case ChartType::DISTANCE_CAPACITANCE:
-                config.xLabel = "距离 (mm)";
-                config.yLabel = "电容 (pF)";
-                config.title = "距离-电容关系图";
+//         switch (newType) {
+//             case ChartType::DISTANCE_CAPACITANCE:
+//                 config.xLabel = "距离 (mm)";
+//                 config.yLabel = "电容 (pF)";
+//                 config.title = "距离-电容关系图";
                 
-                // 提示用户选择固定条件
-                if (csvAnalyzer && csvAnalyzer->hasValidData()) {
-                    showInfo(QString("当前固定条件：角度=%.1f°, 温度=%.1f°C")
-                            .arg(chartFixedConditions.fixedAngle)
-                            .arg(chartFixedConditions.fixedTemperature));
-                }
-                break;
+//                 // 提示用户选择固定条件
+//                 if (csvAnalyzer && csvAnalyzer->hasValidData()) {
+//                     showInfo(QString("当前固定条件：角度=%.1f°, 温度=%.1f°C")
+//                             .arg(chartFixedConditions.fixedAngle)
+//                             .arg(chartFixedConditions.fixedTemperature));
+//                 }
+//                 break;
                 
-            case ChartType::ANGLE_CAPACITANCE:
-                config.xLabel = "角度 (°)";
-                config.yLabel = "电容 (pF)";
-                config.title = "角度-电容关系图";
+//             case ChartType::ANGLE_CAPACITANCE:
+//                 config.xLabel = "角度 (°)";
+//                 config.yLabel = "电容 (pF)";
+//                 config.title = "角度-电容关系图";
                 
-                if (csvAnalyzer && csvAnalyzer->hasValidData()) {
-                    showInfo(QString("当前固定条件：高度=%.1fmm, 温度=%.1f°C")
-                            .arg(chartFixedConditions.fixedHeight)
-                            .arg(chartFixedConditions.fixedTemperature));
-                }
-                break;
+//                 if (csvAnalyzer && csvAnalyzer->hasValidData()) {
+//                     showInfo(QString("当前固定条件：高度=%.1fmm, 温度=%.1f°C")
+//                             .arg(chartFixedConditions.fixedHeight)
+//                             .arg(chartFixedConditions.fixedTemperature));
+//                 }
+//                 break;
                 
-            case ChartType::TEMPERATURE_CAPACITANCE:
-                config.xLabel = "温度 (°C)";
-                config.yLabel = "电容 (pF)";
-                config.title = "温度-电容关系图";
+//             case ChartType::TEMPERATURE_CAPACITANCE:
+//                 config.xLabel = "温度 (°C)";
+//                 config.yLabel = "电容 (pF)";
+//                 config.title = "温度-电容关系图";
                 
-                if (csvAnalyzer && csvAnalyzer->hasValidData()) {
-                    showInfo(QString("当前固定条件：高度=%.1fmm, 角度=%.1f°")
-                            .arg(chartFixedConditions.fixedHeight)
-                            .arg(chartFixedConditions.fixedAngle));
-                }
-                break;
+//                 if (csvAnalyzer && csvAnalyzer->hasValidData()) {
+//                     showInfo(QString("当前固定条件：高度=%.1fmm, 角度=%.1f°")
+//                             .arg(chartFixedConditions.fixedHeight)
+//                             .arg(chartFixedConditions.fixedAngle));
+//                 }
+//                 break;
                 
-            case ChartType::ERROR_ANALYSIS:
-                config.xLabel = "理论电容 (pF)";
-                config.yLabel = "测量电容 (pF)";
-                config.title = "理论值 vs 测量值";
-                break;
+//             case ChartType::ERROR_ANALYSIS:
+//                 config.xLabel = "理论电容 (pF)";
+//                 config.yLabel = "测量电容 (pF)";
+//                 config.title = "理论值 vs 测量值";
+//                 break;
                 
-            case ChartType::DISTANCE_ANGLE_CAPACITANCE_3D:
-                config.title = "3D 距离-角度-电容图";
-                showInfo("3D图表：X轴=距离, Y轴=角度, Z轴=电容, 颜色=温度");
-                break;
-        }
+//             case ChartType::DISTANCE_ANGLE_CAPACITANCE_3D:
+//                 config.title = "3D 距离-角度-电容图";
+//                 showInfo("3D图表：X轴=距离, Y轴=角度, Z轴=电容, 颜色=温度");
+//                 break;
+//         }
         
-        chartDisplayWidget->setChartConfig(config);
+//         chartDisplayWidget->setChartConfig(config);
         
-        // 重新加载数据
-        if (csvAnalyzer && csvAnalyzer->hasValidData()) {
-            updateChartData();
-        }
-    }
+//         // 重新加载数据
+//         if (csvAnalyzer && csvAnalyzer->hasValidData()) {
+//             updateChartData();
+//         }
+//     }
     
-    logUserOperation(QString("Chart type changed to: %1")
-                    .arg(ui->comboBox_3->currentText()));
-}
+//     logUserOperation(QString("Chart type changed to: %1")
+//                     .arg(ui->comboBox_3->currentText()));
+// }
 
-void MainWindow::onDataSourceChanged(int index)
-{
-    if (index < 0) return;
+// void MainWindow::onDataSourceChanged(int index)
+// {
+//     if (index < 0) return;
     
-    DataSource newSource = static_cast<DataSource>(ui->comboBox_4->itemData(index).toInt());
-    currentDataSource = newSource;
+//     DataSource newSource = static_cast<DataSource>(ui->comboBox_4->itemData(index).toInt());
+//     currentDataSource = newSource;
     
-    if (newSource == DataSource::REAL_TIME) {
-        // 使用当前记录的数据
-        if (dataRecorder && dataRecorder->hasData()) {
-            auto measurements = dataRecorder->getAllMeasurements();
-            if (csvAnalyzer) {
-                csvAnalyzer->setData(measurements);
-                updateChartData();
-                showStatusMessage(QString("已加载 %1 条记录数据").arg(measurements.size()));
-            }
-        } else {
-            showWarning("当前没有记录的数据，请先在传感器监控页面记录数据");
-        }
-    } else {
-        // CSV文件模式
-        showInfo("请点击'Load CSV'按钮选择要分析的CSV文件");
-    }
+//     if (newSource == DataSource::REAL_TIME) {
+//         // 使用当前记录的数据
+//         if (dataRecorder && dataRecorder->hasData()) {
+//             auto measurements = dataRecorder->getAllMeasurements();
+//             if (csvAnalyzer) {
+//                 csvAnalyzer->setData(measurements);
+//                 updateChartData();
+//                 showStatusMessage(QString("已加载 %1 条记录数据").arg(measurements.size()));
+//             }
+//         } else {
+//             showWarning("当前没有记录的数据，请先在传感器监控页面记录数据");
+//         }
+//     } else {
+//         // CSV文件模式
+//         showInfo("请点击'Load CSV'按钮选择要分析的CSV文件");
+//     }
     
-    logUserOperation(QString("Data source changed to: %1")
-                    .arg(ui->comboBox_4->currentText()));
-}
+//     logUserOperation(QString("Data source changed to: %1")
+//                     .arg(ui->comboBox_4->currentText()));
+// }
 
-void MainWindow::onLoadCsvClicked()
-{
-    if (isLoadingData) {
-        showWarning("正在加载数据，请稍候...");
-        return;
-    }
+// void MainWindow::onLoadCsvClicked()
+// {
+//     if (isLoadingData) {
+//         showWarning("正在加载数据，请稍候...");
+//         return;
+//     }
     
-    // 打开文件选择对话框
-    QString filename = QFileDialog::getOpenFileName(
-        this,
-        "选择CSV文件",
-        QDir::homePath(),
-        "CSV文件 (*.csv);;所有文件 (*.*)"
-    );
+//     // 打开文件选择对话框
+//     QString filename = QFileDialog::getOpenFileName(
+//         this,
+//         "选择CSV文件",
+//         QDir::homePath(),
+//         "CSV文件 (*.csv);;所有文件 (*.*)"
+//     );
     
-    if (filename.isEmpty()) {
-        return;
-    }
+//     if (filename.isEmpty()) {
+//         return;
+//     }
     
-    isLoadingData = true;
-    showStatusMessage("正在加载CSV文件...");
+//     isLoadingData = true;
+//     showStatusMessage("正在加载CSV文件...");
     
-    try {
-        if (csvAnalyzer && csvAnalyzer->loadCsvFile(filename.toStdString())) {
-            size_t dataCount = csvAnalyzer->getDataCount();
+//     try {
+//         if (csvAnalyzer && csvAnalyzer->loadCsvFile(filename.toStdString())) {
+//             size_t dataCount = csvAnalyzer->getDataCount();
             
-            // 更新图表
-            updateChartData();
+//             // 更新图表
+//             updateChartData();
             
-            // 更新统计信息
-            updateChartStatistics();
+//             // 更新统计信息
+//             updateChartStatistics();
             
-            showStatusMessage(QString("成功加载 %1 条数据").arg(dataCount));
-            logUserOperation(QString("CSV file loaded: %1 (%2 records)")
-                           .arg(QFileInfo(filename).fileName())
-                           .arg(dataCount));
-        } else {
-            showError("无法加载CSV文件，请检查文件格式");
-        }
-    } catch (const std::exception& e) {
-        showError(QString("加载CSV文件失败: %1").arg(e.what()));
-    }
+//             showStatusMessage(QString("成功加载 %1 条数据").arg(dataCount));
+//             logUserOperation(QString("CSV file loaded: %1 (%2 records)")
+//                            .arg(QFileInfo(filename).fileName())
+//                            .arg(dataCount));
+//         } else {
+//             showError("无法加载CSV文件，请检查文件格式");
+//         }
+//     } catch (const std::exception& e) {
+//         showError(QString("加载CSV文件失败: %1").arg(e.what()));
+//     }
     
-    isLoadingData = false;
-}
+//     isLoadingData = false;
+// }
 
-void MainWindow::onChartSettingsChanged()
-{
-    if (!chartDisplayWidget) return;
+// void MainWindow::onChartSettingsChanged()
+// {
+//     if (!chartDisplayWidget) return;
     
-    ChartConfig config = chartDisplayWidget->getChartConfig();
+//     ChartConfig config = chartDisplayWidget->getChartConfig();
     
-    // 更新配置
-    config.showGrid = ui->checkBox->isChecked();
-    config.autoScale = ui->checkBox_2->isChecked();
+//     // 更新配置
+//     config.showGrid = ui->checkBox->isChecked();
+//     config.autoScale = ui->checkBox_2->isChecked();
     
-    chartDisplayWidget->setChartConfig(config);
+//     chartDisplayWidget->setChartConfig(config);
     
-    // 如果不是自动缩放，应用手动范围
-    if (!config.autoScale) {
-        double min = ui->doubleSpinBox_4->value();
-        double max = ui->doubleSpinBox_5->value();
+//     // 如果不是自动缩放，应用手动范围
+//     if (!config.autoScale) {
+//         double min = ui->doubleSpinBox_4->value();
+//         double max = ui->doubleSpinBox_5->value();
         
-        if (min < max) {
-            // 根据当前图表类型决定是设置X还是Y范围
-            chartDisplayWidget->setXRange(min, max);
-        }
-    }
-}
+//         if (min < max) {
+//             // 根据当前图表类型决定是设置X还是Y范围
+//             chartDisplayWidget->setXRange(min, max);
+//         }
+//     }
+// }
 
-void MainWindow::onShowGridChanged(bool checked)
-{
-    if (chartDisplayWidget) {
-        chartDisplayWidget->setShowGrid(checked);
-        logUserOperation(QString("Chart grid %1").arg(checked ? "enabled" : "disabled"));
-    }
-}
+// void MainWindow::onShowGridChanged(bool checked)
+// {
+//     if (chartDisplayWidget) {
+//         chartDisplayWidget->setShowGrid(checked);
+//         logUserOperation(QString("Chart grid %1").arg(checked ? "enabled" : "disabled"));
+//     }
+// }
 
-void MainWindow::onAutoScaleChanged(bool checked)
-{
-    if (chartDisplayWidget) {
-        chartDisplayWidget->setAutoScale(checked);
+// void MainWindow::onAutoScaleChanged(bool checked)
+// {
+//     if (chartDisplayWidget) {
+//         chartDisplayWidget->setAutoScale(checked);
         
-        // 启用/禁用范围控件
-        ui->doubleSpinBox_4->setEnabled(!checked);
-        ui->doubleSpinBox_5->setEnabled(!checked);
+//         // 启用/禁用范围控件
+//         ui->doubleSpinBox_4->setEnabled(!checked);
+//         ui->doubleSpinBox_5->setEnabled(!checked);
         
-        if (checked) {
-            chartDisplayWidget->autoFitRange();
-        }
+//         if (checked) {
+//             chartDisplayWidget->autoFitRange();
+//         }
         
-        logUserOperation(QString("Chart auto-scale %1").arg(checked ? "enabled" : "disabled"));
-    }
-}
+//         logUserOperation(QString("Chart auto-scale %1").arg(checked ? "enabled" : "disabled"));
+//     }
+// }
 
-void MainWindow::onChartRangeChanged()
-{
-    if (!chartDisplayWidget || ui->checkBox_2->isChecked()) {
-        return; // 自动缩放模式下忽略
-    }
+// void MainWindow::onChartRangeChanged()
+// {
+//     if (!chartDisplayWidget || ui->checkBox_2->isChecked()) {
+//         return; // 自动缩放模式下忽略
+//     }
     
-    double min = ui->doubleSpinBox_4->value();
-    double max = ui->doubleSpinBox_5->value();
+//     double min = ui->doubleSpinBox_4->value();
+//     double max = ui->doubleSpinBox_5->value();
     
-    if (min >= max) {
-        showWarning("最小值必须小于最大值");
-        return;
-    }
+//     if (min >= max) {
+//         showWarning("最小值必须小于最大值");
+//         return;
+//     }
     
-    // 根据当前图表类型设置范围
-    switch (currentChartType) {
-        case ChartType::DISTANCE_CAPACITANCE:
-        case ChartType::ANGLE_CAPACITANCE:
-        case ChartType::TEMPERATURE_CAPACITANCE:
-            chartDisplayWidget->setXRange(min, max);
-            break;
+//     // 根据当前图表类型设置范围
+//     switch (currentChartType) {
+//         case ChartType::DISTANCE_CAPACITANCE:
+//         case ChartType::ANGLE_CAPACITANCE:
+//         case ChartType::TEMPERATURE_CAPACITANCE:
+//             chartDisplayWidget->setXRange(min, max);
+//             break;
             
-        case ChartType::ERROR_ANALYSIS:
-            // 误差分析可能需要同时设置X和Y范围
-            chartDisplayWidget->setXRange(min, max);
-            chartDisplayWidget->setYRange(min, max);
-            break;
+//         case ChartType::ERROR_ANALYSIS:
+//             // 误差分析可能需要同时设置X和Y范围
+//             chartDisplayWidget->setXRange(min, max);
+//             chartDisplayWidget->setYRange(min, max);
+//             break;
             
-        default:
-            break;
-    }
-}
+//         default:
+//             break;
+//     }
+// }
 
-void MainWindow::updateChartStatistics()
-{
-    if (!csvAnalyzer || !csvAnalyzer->hasValidData()) {
-        // 清空统计显示
-        ui->label_85->setText("0");
-        ui->label_87->setText("N/A");
-        ui->label_89->setText("N/A");
-        ui->label_91->setText("N/A");
-        ui->label_93->setText("N/A");
-        return;
-    }
+// void MainWindow::updateChartStatistics()
+// {
+//     if (!csvAnalyzer || !csvAnalyzer->hasValidData()) {
+//         // 清空统计显示
+//         ui->label_85->setText("0");
+//         ui->label_87->setText("N/A");
+//         ui->label_89->setText("N/A");
+//         ui->label_91->setText("N/A");
+//         ui->label_93->setText("N/A");
+//         return;
+//     }
     
-    // 获取统计信息
-    auto stats = csvAnalyzer->calculateStatistics();
-    auto errorStats = csvAnalyzer->calculateErrorStatistics();
+//     // 获取统计信息
+//     auto stats = csvAnalyzer->calculateStatistics();
+//     auto errorStats = csvAnalyzer->calculateErrorStatistics();
     
-    // 更新显示
-    ui->label_85->setText(QString::number(stats.dataCount));
-    ui->label_87->setText(QString::number(errorStats.r2Value, 'f', 4));
-    ui->label_89->setText(QString("%1 pF").arg(errorStats.rmse, 0, 'f', 2));
-    ui->label_91->setText(QString("%1 pF").arg(errorStats.maxError, 0, 'f', 2));
-    ui->label_93->setText(QString("%1 pF").arg(errorStats.meanError, 0, 'f', 2));
-}
+//     // 更新显示
+//     ui->label_85->setText(QString::number(stats.dataCount));
+//     ui->label_87->setText(QString::number(errorStats.r2Value, 'f', 4));
+//     ui->label_89->setText(QString("%1 pF").arg(errorStats.rmse, 0, 'f', 2));
+//     ui->label_91->setText(QString("%1 pF").arg(errorStats.maxError, 0, 'f', 2));
+//     ui->label_93->setText(QString("%1 pF").arg(errorStats.meanError, 0, 'f', 2));
+// }
 
-void MainWindow::onChartDataUpdated(int pointCount)
-{
-    // 更新数据点计数
-    ui->label_85->setText(QString::number(pointCount));
+// void MainWindow::onChartDataUpdated(int pointCount)
+// {
+//     // 更新数据点计数
+//     ui->label_85->setText(QString::number(pointCount));
     
-    // 如果有数据，更新其他统计信息
-    if (pointCount > 0 && chartDisplayWidget) {
-        auto stats = chartDisplayWidget->getCurrentStatistics();
-        auto errorStats = chartDisplayWidget->getCurrentErrorStatistics();
+//     // 如果有数据，更新其他统计信息
+//     if (pointCount > 0 && chartDisplayWidget) {
+//         auto stats = chartDisplayWidget->getCurrentStatistics();
+//         auto errorStats = chartDisplayWidget->getCurrentErrorStatistics();
         
-        // 更新R²值（如果适用）
-        if (currentChartType != ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
-            ui->label_87->setText(QString::number(errorStats.r2Value, 'f', 4));
-        }
+//         // 更新R²值（如果适用）
+//         if (currentChartType != ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
+//             ui->label_87->setText(QString::number(errorStats.r2Value, 'f', 4));
+//         }
         
-        // 更新误差统计（仅在误差分析模式）
-        if (currentChartType == ChartType::ERROR_ANALYSIS) {
-            ui->label_89->setText(QString("%1 pF").arg(errorStats.rmse, 0, 'f', 2));
-            ui->label_91->setText(QString("%1 pF").arg(errorStats.maxError, 0, 'f', 2));
-            ui->label_93->setText(QString("%1 pF").arg(errorStats.meanError, 0, 'f', 2));
-        }
-    }
-}
+//         // 更新误差统计（仅在误差分析模式）
+//         if (currentChartType == ChartType::ERROR_ANALYSIS) {
+//             ui->label_89->setText(QString("%1 pF").arg(errorStats.rmse, 0, 'f', 2));
+//             ui->label_91->setText(QString("%1 pF").arg(errorStats.maxError, 0, 'f', 2));
+//             ui->label_93->setText(QString("%1 pF").arg(errorStats.meanError, 0, 'f', 2));
+//         }
+//     }
+// }
 
-// ===== 私有辅助方法 =====
+// // ===== 私有辅助方法 =====
 
-void MainWindow::updateChartData()
-{
-    if (!csvAnalyzer || !csvAnalyzer->hasValidData() || !chartDisplayWidget) {
-        return;
-    }
+// void MainWindow::updateChartData()
+// {
+//     if (!csvAnalyzer || !csvAnalyzer->hasValidData() || !chartDisplayWidget) {
+//         return;
+//     }
     
-    std::vector<DataPoint> dataPoints;
+//     std::vector<DataPoint> dataPoints;
     
-    // 根据图表类型准备数据
-    switch (currentChartType) {
-        case ChartType::DISTANCE_CAPACITANCE:
-            dataPoints = csvAnalyzer->prepareDistanceCapacitanceData(
-                chartFixedConditions.fixedAngle,
-                chartFixedConditions.fixedTemperature,
-                2.0, 1.0  // 容差
-            );
-            break;
+//     // 根据图表类型准备数据
+//     switch (currentChartType) {
+//         case ChartType::DISTANCE_CAPACITANCE:
+//             dataPoints = csvAnalyzer->prepareDistanceCapacitanceData(
+//                 chartFixedConditions.fixedAngle,
+//                 chartFixedConditions.fixedTemperature,
+//                 2.0, 1.0  // 容差
+//             );
+//             break;
             
-        case ChartType::ANGLE_CAPACITANCE:
-            dataPoints = csvAnalyzer->prepareAngleCapacitanceData(
-                chartFixedConditions.fixedHeight,
-                chartFixedConditions.fixedTemperature,
-                2.0, 1.0
-            );
-            break;
+//         case ChartType::ANGLE_CAPACITANCE:
+//             dataPoints = csvAnalyzer->prepareAngleCapacitanceData(
+//                 chartFixedConditions.fixedHeight,
+//                 chartFixedConditions.fixedTemperature,
+//                 2.0, 1.0
+//             );
+//             break;
             
-        case ChartType::TEMPERATURE_CAPACITANCE:
-            dataPoints = csvAnalyzer->prepareTemperatureCapacitanceData(
-                chartFixedConditions.fixedHeight,
-                chartFixedConditions.fixedAngle,
-                2.0, 2.0
-            );
-            break;
+//         case ChartType::TEMPERATURE_CAPACITANCE:
+//             dataPoints = csvAnalyzer->prepareTemperatureCapacitanceData(
+//                 chartFixedConditions.fixedHeight,
+//                 chartFixedConditions.fixedAngle,
+//                 2.0, 2.0
+//             );
+//             break;
             
-        case ChartType::ERROR_ANALYSIS:
-            dataPoints = csvAnalyzer->prepareErrorAnalysisData();
-            break;
+//         case ChartType::ERROR_ANALYSIS:
+//             dataPoints = csvAnalyzer->prepareErrorAnalysisData();
+//             break;
             
-        case ChartType::DISTANCE_ANGLE_CAPACITANCE_3D:
-            // 3D数据需要特殊处理
-            handle3DChartData();
-            return;
-    }
+//         case ChartType::DISTANCE_ANGLE_CAPACITANCE_3D:
+//             // 3D数据需要特殊处理
+//             handle3DChartData();
+//             return;
+//     }
     
-    // 设置数据到图表
-    chartDisplayWidget->setDataPoints(dataPoints);
+//     // 设置数据到图表
+//     chartDisplayWidget->setDataPoints(dataPoints);
     
-    // 如果启用了趋势线，执行回归分析
-    if (chartDisplayWidget->getChartConfig().showTrendLine && 
-        currentChartType != ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
-        auto regression = chartDisplayWidget->performLinearRegression();
+//     // 如果启用了趋势线，执行回归分析
+//     if (chartDisplayWidget->getChartConfig().showTrendLine && 
+//         currentChartType != ChartType::DISTANCE_ANGLE_CAPACITANCE_3D) {
+//         auto regression = chartDisplayWidget->performLinearRegression();
         
-        // 可以在状态栏显示回归方程
-        if (regression.r2 > 0) {
-            QString equation = QString("y = %.3fx + %.3f (R² = %.4f)")
-                              .arg(regression.slope)
-                              .arg(regression.intercept)
-                              .arg(regression.r2);
-            showStatusMessage(equation, 5000);
-        }
-    }
+//         // 可以在状态栏显示回归方程
+//         if (regression.r2 > 0) {
+//             QString equation = QString("y = %.3fx + %.3f (R² = %.4f)")
+//                               .arg(regression.slope)
+//                               .arg(regression.intercept)
+//                               .arg(regression.r2);
+//             showStatusMessage(equation, 5000);
+//         }
+//     }
     
-    // 更新统计信息
-    updateChartStatistics();
-}
+//     // 更新统计信息
+//     updateChartStatistics();
+// }
 
-void MainWindow::handle3DChartData()
-{
-    if (!csvAnalyzer || !chartDisplayWidget) {
-        return;
-    }
+// void MainWindow::handle3DChartData()
+// {
+//     if (!csvAnalyzer || !chartDisplayWidget) {
+//         return;
+//     }
     
-    // 准备3D数据
-    auto data3D = chartDisplayWidget->prepare3DData();
+//     // 准备3D数据
+//     auto data3D = chartDisplayWidget->prepare3DData();
     
-    // 这里可以集成3D渲染库（如Qt3D或OpenGL）
-    // 暂时显示提示信息
-    QString info = QString("3D数据准备完成：\n")
-                  + QString("X轴(距离): %1 个点\n").arg(data3D.xPoints.size())
-                  + QString("Y轴(角度): %1 个点\n").arg(data3D.yPoints.size())
-                  + QString("Z轴(电容): %1 个点\n").arg(data3D.zPoints.size())
-                  + QString("颜色(温度): %1 个值").arg(data3D.colorValues.size());
+//     // 这里可以集成3D渲染库（如Qt3D或OpenGL）
+//     // 暂时显示提示信息
+//     QString info = QString("3D数据准备完成：\n")
+//                   + QString("X轴(距离): %1 个点\n").arg(data3D.xPoints.size())
+//                   + QString("Y轴(角度): %1 个点\n").arg(data3D.yPoints.size())
+//                   + QString("Z轴(电容): %1 个点\n").arg(data3D.zPoints.size())
+//                   + QString("颜色(温度): %1 个值").arg(data3D.colorValues.size());
     
-    showInfo(info);
+//     showInfo(info);
     
-    // TODO: 实现3D渲染
-    // 可以使用Qt3D或集成VTK等3D库
-}
+//     // TODO: 实现3D渲染
+//     // 可以使用Qt3D或集成VTK等3D库
+// }
 
-void MainWindow::showFixedConditionsDialog()
-{
-    if (!csvAnalyzer || !csvAnalyzer->hasValidData()) {
-        showWarning("请先加载数据");
-        return;
-    }
+// void MainWindow::showFixedConditionsDialog()
+// {
+//     if (!csvAnalyzer || !csvAnalyzer->hasValidData()) {
+//         showWarning("请先加载数据");
+//         return;
+//     }
     
-    // 创建固定条件对话框
-    FixedConditionsDialog dialog(this);
+//     // 创建固定条件对话框
+//     FixedConditionsDialog dialog(this);
     
-    // 设置可用值
-    dialog.setAvailableHeights(csvAnalyzer->getUniqueHeights());
-    dialog.setAvailableAngles(csvAnalyzer->getUniqueAngles());
-    dialog.setAvailableTemperatures(csvAnalyzer->getUniqueTemperatures());
+//     // 设置可用值
+//     dialog.setAvailableHeights(csvAnalyzer->getUniqueHeights());
+//     dialog.setAvailableAngles(csvAnalyzer->getUniqueAngles());
+//     dialog.setAvailableTemperatures(csvAnalyzer->getUniqueTemperatures());
     
-    // 设置当前条件
-    FixedConditionsDialog::Conditions conditions;
-    conditions.height = chartFixedConditions.fixedHeight;
-    conditions.angle = chartFixedConditions.fixedAngle;
-    conditions.temperature = chartFixedConditions.fixedTemperature;
-    dialog.setConditions(conditions);
+//     // 设置当前条件
+//     FixedConditionsDialog::Conditions conditions;
+//     conditions.height = chartFixedConditions.fixedHeight;
+//     conditions.angle = chartFixedConditions.fixedAngle;
+//     conditions.temperature = chartFixedConditions.fixedTemperature;
+//     dialog.setConditions(conditions);
     
-    // 显示对话框
-    if (dialog.exec() == QDialog::Accepted) {
-        conditions = dialog.getConditions();
+//     // 显示对话框
+//     if (dialog.exec() == QDialog::Accepted) {
+//         conditions = dialog.getConditions();
         
-        // 更新固定条件
-        chartFixedConditions.fixedHeight = conditions.height;
-        chartFixedConditions.fixedAngle = conditions.angle;
-        chartFixedConditions.fixedTemperature = conditions.temperature;
+//         // 更新固定条件
+//         chartFixedConditions.fixedHeight = conditions.height;
+//         chartFixedConditions.fixedAngle = conditions.angle;
+//         chartFixedConditions.fixedTemperature = conditions.temperature;
         
-        // 重新加载数据
-        updateChartData();
+//         // 重新加载数据
+//         updateChartData();
         
-        logUserOperation(QString("Fixed conditions updated: H=%.1fmm, A=%.1f°, T=%.1f°C")
-                        .arg(conditions.height)
-                        .arg(conditions.angle)
-                        .arg(conditions.temperature));
-    }
-}
+//         logUserOperation(QString("Fixed conditions updated: H=%.1fmm, A=%.1f°, T=%.1f°C")
+//                         .arg(conditions.height)
+//                         .arg(conditions.angle)
+//                         .arg(conditions.temperature));
+//     }
+// }
 
-// ===== 错误处理辅助方法 =====
+// // ===== 错误处理辅助方法 =====
 
-void MainWindow::showError(const QString& message)
-{
-    ErrorDialog::showError(this, ErrorDialog::DataValidationError, message);
-    logError(message, "DataVisualization");
-}
+// void MainWindow::showError(const QString& message)
+// {
+//     ErrorDialog::showError(this, ErrorDialog::DataValidationError, message);
+//     logError(message, "DataVisualization");
+// }
 
-void MainWindow::showWarning(const QString& message)
-{
-    QMessageBox::warning(this, "警告", message);
-    logWarning(message, "DataVisualization");
-}
+// void MainWindow::showWarning(const QString& message)
+// {
+//     QMessageBox::warning(this, "警告", message);
+//     logWarning(message, "DataVisualization");
+// }
 
-void MainWindow::showInfo(const QString& message)
-{
-    // 在状态栏显示信息，而不是弹出对话框
-    showStatusMessage(message, 5000);
-    logInfo(message, "DataVisualization");
-}
+// void MainWindow::showInfo(const QString& message)
+// {
+//     // 在状态栏显示信息，而不是弹出对话框
+//     showStatusMessage(message, 5000);
+//     logInfo(message, "DataVisualization");
+// }

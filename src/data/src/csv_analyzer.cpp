@@ -442,3 +442,80 @@ std::vector<double> CsvAnalyzer::extractHeights(const std::vector<MeasurementDat
     return values;
 }
 // 其他提取方法类似...
+
+// 在 csv_analyzer.cpp 文件末尾添加这些缺失的方法实现
+
+std::vector<double> CsvAnalyzer::extractAngles(const std::vector<MeasurementData>& data) const {
+    std::vector<double> values;
+    values.reserve(data.size());
+    
+    for (const auto& measurement : data) {
+        values.push_back(measurement.getSetAngle());
+    }
+    
+    return values;
+}
+
+std::vector<double> CsvAnalyzer::extractTemperatures(const std::vector<MeasurementData>& data) const {
+    std::vector<double> values;
+    values.reserve(data.size());
+    
+    for (const auto& measurement : data) {
+        values.push_back(measurement.getSensorData().temperature);  // 直接访问公共成员
+    }
+    
+    return values;
+}
+
+std::vector<double> CsvAnalyzer::extractTheoreticalCapacitances(const std::vector<MeasurementData>& data) const {
+    std::vector<double> values;
+    values.reserve(data.size());
+    
+    for (const auto& measurement : data) {
+        values.push_back(measurement.getTheoreticalCapacitance());
+    }
+    
+    return values;
+}
+
+// 添加其他缺失的方法（如果需要）
+bool CsvAnalyzer::hasValidData() const {
+    return !pImpl->data.empty();
+}
+
+std::vector<double> CsvAnalyzer::getUniqueHeights(double tolerance) const {
+    std::set<double> uniqueValues;
+    
+    for (const auto& measurement : pImpl->data) {
+        double height = measurement.getSetHeight();
+        // 使用容差进行分组
+        double rounded = std::round(height / tolerance) * tolerance;
+        uniqueValues.insert(rounded);
+    }
+    
+    return std::vector<double>(uniqueValues.begin(), uniqueValues.end());
+}
+
+std::vector<double> CsvAnalyzer::getUniqueAngles(double tolerance) const {
+    std::set<double> uniqueValues;
+    
+    for (const auto& measurement : pImpl->data) {
+        double angle = measurement.getSetAngle();
+        double rounded = std::round(angle / tolerance) * tolerance;
+        uniqueValues.insert(rounded);
+    }
+    
+    return std::vector<double>(uniqueValues.begin(), uniqueValues.end());
+}
+
+std::vector<double> CsvAnalyzer::getUniqueTemperatures(double tolerance) const {
+    std::set<double> uniqueValues;
+    
+    for (const auto& measurement : pImpl->data) {
+        double temp = measurement.getSensorData().temperature;
+        double rounded = std::round(temp / tolerance) * tolerance;
+        uniqueValues.insert(rounded);
+    }
+    
+    return std::vector<double>(uniqueValues.begin(), uniqueValues.end());
+}
