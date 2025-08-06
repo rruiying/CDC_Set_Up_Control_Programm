@@ -2344,3 +2344,4 @@ void MainWindow::showInfo(const QString& message)
     // 在状态栏显示信息，而不是弹出对话框
     showStatusMessage(message, 5000);
     logInfo(message, "DataVisualization");
+}

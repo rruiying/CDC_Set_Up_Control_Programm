@@ -78,10 +78,10 @@ DeviceInfo AddDeviceDialog::getDeviceInfo() const
     int baudRate = baudRateText.toInt();
     
     DeviceInfo info;
-    info.setName(deviceName);
-    info.setPortName(portName);
+    info.setName(deviceName.toStdString());
+    info.setPortName(portName.toStdString());
     info.setBaudRate(baudRate);
-    info.setConnectionStatus(DeviceInfo::Disconnected);
+    info.setConnectionStatus(ConnectionStatus::DISCONNECTED);
     
     return info;
 }
@@ -459,8 +459,8 @@ void AddDeviceDialog::accept()
     // 记录成功添加
     DeviceInfo info = getDeviceInfo();
     logUserOperation(QString("Device added successfully: %1 on %2 at %3")
-                    .arg(info.getName())
-                    .arg(info.getPortName())
+                    .arg(QString::fromStdString(info.getName()))
+                    .arg(QString::fromStdString(info.getPortName()))
                     .arg(info.getBaudRate()));
     
     QDialog::accept();
