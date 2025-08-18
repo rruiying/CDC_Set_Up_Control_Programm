@@ -85,7 +85,7 @@ struct SerialPortConfig {
 class SerialInterface {
 public:
     SerialInterface();
-    virtual ~SerialInterface();
+    ~SerialInterface();
     
     // 回调函数类型
     using ConnectionCallback = std::function<void(bool connected)>;
@@ -148,6 +148,7 @@ private:
     void notifyDataReceived(const std::string& data);
     void notifyError(const std::string& error);
     void reconnectThread();
+    void receiveThread();
     std::string readUntilTerminator(const std::string& terminator, int timeoutMs);
     
     // 成员变量
@@ -166,6 +167,9 @@ private:
     // 重连线程
     std::unique_ptr<std::thread> reconnectThreadPtr;
     std::atomic<bool> stopReconnect{false};
+
+    std::unique_ptr<std::thread> receiveThreadPtr;
+    std::atomic<bool> stopReceiveThread{false};
     
     // 平台相关的实现指针（pimpl模式）
     class Impl;

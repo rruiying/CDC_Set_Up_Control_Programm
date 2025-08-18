@@ -6,13 +6,13 @@
 #include <QStringList>
 #include <QTimer>
 #include <QSerialPortInfo>
+#include "device_info.h"
 
 // 前向声明
 class QLineEdit;
 class QComboBox;
 class QDialogButtonBox;
 class QLabel;
-class DeviceInfo;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class AddDeviceDialog; }

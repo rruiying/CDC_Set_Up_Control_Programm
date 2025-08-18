@@ -30,7 +30,7 @@ target_include_directories(data_lib PUBLIC
 
 # 链接依赖库
 target_link_libraries(data_lib PUBLIC
-    Qt5::Core
+    Qt6::Core
     models_lib
     utils_lib
 )

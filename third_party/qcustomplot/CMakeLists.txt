@@ -6,10 +6,10 @@ add_library(qcustomplot STATIC
 )
 
 target_link_libraries(qcustomplot
-    Qt5::Core
-    Qt5::Gui
-    Qt5::Widgets
-    Qt5::PrintSupport
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::PrintSupport
 )
 
 target_include_directories(qcustomplot PUBLIC

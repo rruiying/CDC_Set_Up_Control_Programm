@@ -3,7 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QDirIterator>
-#include <QRegExp>
+#include <QRegularExpression>
 
 FileManager::FileManager(QObject* parent)
     : QObject(parent)
@@ -174,7 +174,7 @@ bool FileManager::restoreFile(const QString& backupName) {
     // 从备份文件名提取原始文件名
     QString originalName = backupName;
     originalName.replace(".backup", "");
-    originalName.replace(QRegExp("_\\d{8}_\\d{6}"), "");
+    originalName.replace(QRegularExpression("_\\d{8}_\\d{6}"), "");
     
     return copyFile(backupName, originalName);
 }

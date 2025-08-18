@@ -56,9 +56,9 @@ add_executable(CDC_Tests ${TEST_SOURCES})
 target_link_libraries(CDC_Tests
     GTest::gtest
     GTest::gtest_main
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::Test       # Qt测试框架
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Test       # Qt测试框架
     core_lib
     data_lib
     hardware_lib

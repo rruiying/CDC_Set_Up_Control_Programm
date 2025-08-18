@@ -20,8 +20,8 @@ target_include_directories(app_lib PUBLIC
 )
 
 target_link_libraries(app_lib PUBLIC
-    Qt5::Core
-    Qt5::Widgets
+    Qt6::Core
+    Qt6::Widgets
     core_lib
     data_lib
     hardware_lib

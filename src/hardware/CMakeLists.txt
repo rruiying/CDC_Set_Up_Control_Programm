@@ -25,8 +25,8 @@ target_include_directories(hardware_lib PUBLIC
 )
 
 target_link_libraries(hardware_lib PUBLIC
-    Qt5::Core
-    Qt5::SerialPort
+    Qt6::Core
+    Qt6::SerialPort
     models_lib
     utils_lib
 )
