@@ -18,18 +18,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# 查找Qt5组件
-find_package(Qt5 REQUIRED COMPONENTS 
+# 查找Qt6组件
+find_package(Qt6 REQUIRED COMPONENTS 
     Core 
     Widgets 
     Gui 
     SerialPort 
     Charts 
     PrintSupport    # QCustomPlot需要
-    3DCore          # Qt3D核心
-    3DRender        # Qt3D渲染
-    3DInput         # Qt3D输入
-    3DExtras        # Qt3D扩展
+#    3DCore          # Qt3D核心
+ #   3DRender        # Qt3D渲染
+  #  3DInput         # Qt3D输入
+   # 3DExtras        # Qt3D扩展
 )
 
 # 设置Qt5目录（如果需要）
@@ -70,12 +70,12 @@ target_link_libraries(CDC_Control_System
     models_lib
     utils_lib
     # Qt库
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::Gui
-    Qt5::SerialPort
-    Qt5::Charts
-    Qt5::PrintSupport
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Gui
+    Qt6::SerialPort
+    Qt6::Charts
+    Qt6::PrintSupport
     # 第三方库
     qcustomplot
 )

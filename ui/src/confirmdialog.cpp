@@ -2,7 +2,8 @@
 #include "../include/confirmdialog.h"
 #include "../../src/utils/include/logger.h"
 #include <QApplication>
-#include <QDesktopWidget>
+#include <QScreen>
+#include <QGuiApplication>
 #include <QScreen>
 #include <QStyle>
 #include <QKeyEvent>

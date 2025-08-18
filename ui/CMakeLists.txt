@@ -9,8 +9,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # 设置 AUTOUIC 搜索路径
 set(CMAKE_AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/forms)
 
-# 查找 Qt5
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui)
+# 查找 Qt6
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 
 # 手动列出源文件，排除图表相关文件
 set(UI_SOURCES
@@ -61,9 +61,9 @@ target_include_directories(ui_lib PUBLIC
 
 # 链接库
 target_link_libraries(ui_lib PUBLIC
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::Gui
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Gui
     core_lib
     data_lib
     hardware_lib

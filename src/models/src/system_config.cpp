@@ -375,9 +375,9 @@ std::string SystemConfig::getConfigSummary() const {
 }
 
 void SystemConfig::notifyChange() {
-    if (changeCallback) {
+/*     if (changeCallback) {
         changeCallback();
-    }
+    } */
 }
 
 bool SystemConfig::validateSafetyLimits(double minH, double maxH, double minA, double maxA) const {

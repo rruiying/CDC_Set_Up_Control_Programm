@@ -51,6 +51,7 @@ MainWindow::MainWindow(QWidget *parent)
     qDebug() << "ui指针初始化完成:" << ui;
 
     ui->setupUi(this);
+    setupResponsiveLayout();  // <-- 添加这行
 
     qDebug() << "setupUi调用完成";
 
@@ -60,7 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
     }
     
     // 设置窗口属性
-    setWindowTitle("CDC控制系统 v1.0");
+    setWindowTitle("CDC_Control_Programm v1.0");
     setMinimumSize(800, 600);
     
     // 初始化第一页（设备管理）
@@ -357,6 +358,8 @@ void MainWindow::onCommandLineReturnPressed()
 {
     onSendCommandClicked();
 }
+
+
 
 void MainWindow::onSerialDataReceived(const QString& data)
 {
@@ -1654,7 +1657,7 @@ bool MainWindow::saveLogsToFile(const std::vector<LogEntry>& logs, const QString
     }
     
     QTextStream out(&file);
-    out.setCodec("UTF-8"); // 确保中文正确保存
+    out.setEncoding(QStringConverter::Utf8); // 确保中文正确保存
     
     // 写入文件头
     out << "CDC控制系统 - 系统日志\n";
@@ -2320,3 +2323,283 @@ void MainWindow::logInfo(const QString& info, const QString& context)
 //     showStatusMessage(message, 5000);
 //     logInfo(message, "DataVisualization");
 // }
+
+void MainWindow::setupResponsiveLayout() {
+    // ========== 1. 设置主TabWidget自适应 ==========
+    if (ui->tabWidget) {
+        ui->tabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+    
+    // ========== 2. 第一页：设备管理页面布局改造 ==========
+    // 获取第一个标签页
+    QWidget *deviceTab = ui->tabWidget->widget(0);
+    if (deviceTab) {
+        // 清除原有的固定布局（如果是在Designer中手动放置的）
+        QLayout *oldLayout = deviceTab->layout();
+        if (!oldLayout) {
+            // 创建新的响应式布局
+            QHBoxLayout *mainLayout = new QHBoxLayout(deviceTab);
+            
+            // 左侧面板：设备列表
+            QWidget *leftPanel = new QWidget();
+            QVBoxLayout *leftLayout = new QVBoxLayout(leftPanel);
+            
+            // 添加设备列表
+            leftLayout->addWidget(ui->listWidget);
+            
+            // 按钮组
+            QHBoxLayout *buttonLayout = new QHBoxLayout();
+            buttonLayout->addWidget(ui->pushButton_3);  // 添加设备
+            buttonLayout->addWidget(ui->pushButton_4);  // 删除设备
+            leftLayout->addLayout(buttonLayout);
+            
+            // 设置左侧面板约束
+            leftPanel->setMinimumWidth(200);
+            leftPanel->setMaximumWidth(350);
+            
+            // 右侧面板：详情和日志
+            QWidget *rightPanel = new QWidget();
+            QVBoxLayout *rightLayout = new QVBoxLayout(rightPanel);
+            
+            // 设备信息区域
+            QGroupBox *infoGroup = new QGroupBox("设备信息");
+            QGridLayout *infoLayout = new QGridLayout(infoGroup);
+            infoLayout->addWidget(ui->label_3, 0, 0, 1, 2);  // 设备名称显示
+            infoLayout->addWidget(ui->pushButton_20, 1, 0);  // 连接
+            infoLayout->addWidget(ui->pushButton, 1, 1);     // 断开
+            infoGroup->setMaximumHeight(120);
+            
+            // 命令发送区域
+            QHBoxLayout *cmdLayout = new QHBoxLayout();
+            cmdLayout->addWidget(ui->lineEdit);
+            cmdLayout->addWidget(ui->pushButton_2);
+            
+            // 通信日志
+            QLabel *logLabel = new QLabel("通信日志:");
+            ui->textEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            
+            // 组装右侧面板
+            rightLayout->addWidget(infoGroup);
+            rightLayout->addLayout(cmdLayout);
+            rightLayout->addWidget(logLabel);
+            rightLayout->addWidget(ui->textEdit);
+            
+            // 使用分割器
+            QSplitter *splitter = new QSplitter(Qt::Horizontal);
+            splitter->addWidget(leftPanel);
+            splitter->addWidget(rightPanel);
+            splitter->setStretchFactor(0, 1);  // 左侧占1份
+            splitter->setStretchFactor(1, 3);  // 右侧占3份
+            
+            mainLayout->addWidget(splitter);
+        }
+    }
+    
+    // ========== 3. 第二页：电机控制页面布局 ==========
+    QWidget *motorTab = ui->tabWidget->widget(1);
+    if (motorTab && !motorTab->layout()) {
+        QVBoxLayout *motorLayout = new QVBoxLayout(motorTab);
+        
+        // 状态显示区（固定高度）
+        QGroupBox *statusGroup = new QGroupBox("当前状态");
+        QHBoxLayout *statusLayout = new QHBoxLayout(statusGroup);
+        statusLayout->addWidget(new QLabel("高度:"));
+        statusLayout->addWidget(ui->label_11);
+        statusLayout->addStretch();
+        statusLayout->addWidget(new QLabel("角度:"));
+        statusLayout->addWidget(ui->label_8);
+        statusLayout->addStretch();
+        statusLayout->addWidget(new QLabel("理论电容:"));
+        statusLayout->addWidget(ui->label_13);
+        statusGroup->setMaximumHeight(80);
+        
+        // 控制区域（中等高度）
+        QGroupBox *controlGroup = new QGroupBox("运动控制");
+        QGridLayout *controlGrid = new QGridLayout(controlGroup);
+        
+        // 目标设置
+        controlGrid->addWidget(new QLabel("目标高度:"), 0, 0);
+        controlGrid->addWidget(ui->doubleSpinBox, 0, 1);
+        controlGrid->addWidget(ui->pushButton_5, 0, 2);
+        
+        controlGrid->addWidget(new QLabel("目标角度:"), 1, 0);
+        controlGrid->addWidget(ui->doubleSpinBox_2, 1, 1);
+        controlGrid->addWidget(ui->pushButton_9, 1, 2);
+        
+        // 让输入框可以伸缩
+        controlGrid->setColumnStretch(1, 1);
+        
+        // 按钮行
+        QHBoxLayout *btnLayout = new QHBoxLayout();
+        btnLayout->addWidget(ui->pushButton_7);   // Move
+        btnLayout->addWidget(ui->pushButton_8);   // Home
+        btnLayout->addWidget(ui->pushButton_6);   // Stop
+        btnLayout->addStretch();                  // 弹性空间
+        ui->pushButton_12->setStyleSheet("QPushButton { background-color: red; }");
+        btnLayout->addWidget(ui->pushButton_12);  // Emergency Stop
+        
+        controlGrid->addLayout(btnLayout, 2, 0, 1, 3);
+        
+        // 安全限位（可折叠）
+        QGroupBox *safetyGroup = new QGroupBox("安全限位设置");
+        QGridLayout *safetyGrid = new QGridLayout(safetyGroup);
+        safetyGrid->addWidget(new QLabel("最大高度:"), 0, 0);
+        safetyGrid->addWidget(ui->doubleSpinBox_3, 0, 1);
+        safetyGrid->addWidget(new QLabel("最小高度:"), 0, 2);
+        safetyGrid->addWidget(ui->doubleSpinBox_8, 0, 3);
+        safetyGrid->addWidget(new QLabel("最小角度:"), 1, 0);
+        safetyGrid->addWidget(ui->doubleSpinBox_6, 1, 1);
+        safetyGrid->addWidget(new QLabel("最大角度:"), 1, 2);
+        safetyGrid->addWidget(ui->doubleSpinBox_7, 1, 3);
+        safetyGrid->setColumnStretch(1, 1);
+        safetyGrid->setColumnStretch(3, 1);
+        
+        // 组装页面
+        motorLayout->addWidget(statusGroup);
+        motorLayout->addWidget(controlGroup);
+        motorLayout->addWidget(safetyGroup);
+        motorLayout->addStretch();  // 底部弹性空间
+    }
+    
+    // ========== 4. 第三页：传感器监控页面 ==========
+    QWidget *sensorTab = ui->tabWidget->widget(2);
+    if (sensorTab && !sensorTab->layout()) {
+        QVBoxLayout *sensorLayout = new QVBoxLayout(sensorTab);
+        
+        // 使用分割器分割上下两部分
+        QSplitter *vSplitter = new QSplitter(Qt::Vertical);
+        
+        // 上半部分：主要测量值
+        QGroupBox *primaryGroup = new QGroupBox("主要测量值");
+        QGridLayout *primaryGrid = new QGridLayout(primaryGroup);
+        // ... 添加标签和显示 ...
+        primaryGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        
+        // 下半部分：详细数据
+        QGroupBox *detailGroup = new QGroupBox("详细传感器数据");
+        detailGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        
+        vSplitter->addWidget(primaryGroup);
+        vSplitter->addWidget(detailGroup);
+        vSplitter->setStretchFactor(0, 1);
+        vSplitter->setStretchFactor(1, 2);
+        
+        // 按钮区域
+        QHBoxLayout *btnLayout = new QHBoxLayout();
+        btnLayout->addWidget(ui->pushButton_13);  // Record
+        btnLayout->addWidget(ui->pushButton_14);  // Export
+        btnLayout->addStretch();
+        btnLayout->addWidget(ui->label_38);       // Last record time
+        
+        sensorLayout->addWidget(vSplitter);
+        sensorLayout->addLayout(btnLayout);
+    }
+    
+    // ========== 5. 第四页：日志查看页面 ==========
+    QWidget *logTab = ui->tabWidget->widget(3);
+    if (logTab && !logTab->layout()) {
+        QVBoxLayout *logLayout = new QVBoxLayout(logTab);
+        
+        // 工具栏
+        QHBoxLayout *toolbarLayout = new QHBoxLayout();
+        toolbarLayout->addWidget(new QLabel("日志级别:"));
+        toolbarLayout->addWidget(ui->comboBox_2);
+        toolbarLayout->addStretch();
+        toolbarLayout->addWidget(ui->pushButton_15);  // Clear
+        toolbarLayout->addWidget(ui->pushButton_10);  // Save
+        
+        // 日志显示区域（可扩展）
+        ui->textEdit_2->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        
+        logLayout->addLayout(toolbarLayout);
+        logLayout->addWidget(ui->textEdit_2);
+    }
+}
+
+// ============================================
+// 添加响应窗口大小变化的函数
+// ============================================
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);  // 调用基类实现
+    
+    // 获取新的窗口大小
+    QSize newSize = event->size();
+    
+    // 根据窗口大小调整布局
+    adjustLayoutForSize(newSize);
+}
+
+void MainWindow::adjustLayoutForSize(const QSize &size) {
+    int width = size.width();
+    int height = size.height();
+    
+    // ===== 小屏幕模式 (宽度 < 1024) =====
+    if (width < 1024) {
+        // 调整字体大小
+        QFont font = qApp->font();
+        font.setPointSize(8);
+        qApp->setFont(font);
+        
+        // 隐藏一些次要信息
+        if (ui->label_19) ui->label_19->setVisible(false);
+        if (ui->label_20) ui->label_20->setVisible(false);
+        
+        // 缩小按钮
+        const QList<QPushButton*> buttons = findChildren<QPushButton*>();
+        for (QPushButton *btn : buttons) {
+            btn->setMinimumHeight(24);
+        }
+        
+        // 减小间距
+        if (centralWidget() && centralWidget()->layout()) {
+            centralWidget()->layout()->setSpacing(2);
+            centralWidget()->layout()->setContentsMargins(5, 5, 5, 5);
+        }
+    }
+    // ===== 标准模式 (1024 <= 宽度 < 1600) =====
+    else if (width < 1600) {
+        // 恢复标准字体
+        QFont font = qApp->font();
+        font.setPointSize(9);
+        qApp->setFont(font);
+        
+        // 显示所有信息
+        if (ui->label_19) ui->label_19->setVisible(true);
+        if (ui->label_20) ui->label_20->setVisible(true);
+        
+        // 标准按钮大小
+        const QList<QPushButton*> buttons = findChildren<QPushButton*>();
+        for (QPushButton *btn : buttons) {
+            btn->setMinimumHeight(28);
+        }
+        
+        // 标准间距
+        if (centralWidget() && centralWidget()->layout()) {
+            centralWidget()->layout()->setSpacing(6);
+            centralWidget()->layout()->setContentsMargins(9, 9, 9, 9);
+        }
+    }
+    // ===== 大屏幕模式 (宽度 >= 1600) =====
+    else {
+        // 增大字体
+        QFont font = qApp->font();
+        font.setPointSize(10);
+        qApp->setFont(font);
+        
+        // 增大按钮
+        const QList<QPushButton*> buttons = findChildren<QPushButton*>();
+        for (QPushButton *btn : buttons) {
+            btn->setMinimumHeight(32);
+        }
+        
+        // 增大间距
+        if (centralWidget() && centralWidget()->layout()) {
+            centralWidget()->layout()->setSpacing(8);
+            centralWidget()->layout()->setContentsMargins(12, 12, 12, 12);
+        }
+    }
+    
+    // 更新状态栏显示当前窗口大小（调试用）
+    statusBar()->showMessage(QString("窗口大小: %1x%2").arg(width).arg(height), 2000);
+}

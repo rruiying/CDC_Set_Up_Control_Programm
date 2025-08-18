@@ -42,7 +42,7 @@ bool Application::initialize() {
     dir.mkpath("./runtime/config");
     
     // 加载系统配置
-    SystemConfig::getInstance().loadFromFile("./runtime/config/system_config.json");
+//    SystemConfig::getInstance().loadFromFile("./runtime/config/system_config.json");
     
     // 初始化各层
     if (!initializeHardware()) {
@@ -98,7 +98,7 @@ void Application::shutdown() {
     }
     
     // 保存配置
-    SystemConfig::getInstance().saveToFile("./runtime/config/system_config.json");
+//    SystemConfig::getInstance().saveToFile("./runtime/config/system_config.json");
     
     m_isRunning = false;
     LOG_INFO("Application shutdown complete");
@@ -213,6 +213,7 @@ void Application::connectSignals() {
     // 使用回调机制代替Qt信号
     
     // 安全管理器回调
+    /*
     if (m_safetyManager) {
         // 使用已有的紧急停止回调
         m_safetyManager->setEmergencyStopCallback([this](bool stopped) {
@@ -275,6 +276,6 @@ void Application::connectSignals() {
         QObject::connect(m_mainWindow.get(), &MainWindow::destroyed,
                         this, &Application::shutdown);
     }
-    
+    */
     LOG_INFO("Signal connections established");
 }

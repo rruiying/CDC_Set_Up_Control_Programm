@@ -8,6 +8,8 @@
 #include <QListWidgetItem>
 #include <QString>
 #include <QStringList>
+#include <QResizeEvent>
+#include <QSplitter>
 #include <memory>
 #include "../../src/core/include/motor_controller.h"
 #include "../../src/core/include/safety_manager.h"
@@ -58,6 +60,8 @@ protected:
      * @param event 关闭事件
      */
     void closeEvent(QCloseEvent *event) override;
+
+    void resizeEvent(QResizeEvent *event) override;
 
 private slots:
     // ===== 第一页：设备管理相关槽函数 =====
@@ -342,6 +346,94 @@ private:
      * @return 显示文本
      */
     QString getDeviceDisplayText(const DeviceInfo& device) const;
+
+        // ===== 响应式布局相关方法 ===== <-- 在这里添加新的section
+    
+    /**
+     * @brief 设置响应式布局
+     * 
+     * 为所有页面设置自适应布局，使控件能够随窗口大小变化
+     * 在构造函数中setupUi之后调用
+     */
+    void setupResponsiveLayout();
+    
+    /**
+     * @brief 根据窗口大小调整布局
+     * @param size 新的窗口大小
+     * 
+     * 根据不同的窗口大小切换不同的布局模式：
+     * - 小屏幕模式 (<1024px)：紧凑布局
+     * - 标准模式 (1024-1600px)：标准布局
+     * - 大屏幕模式 (>1600px)：宽松布局
+     */
+    void adjustLayoutForSize(const QSize &size);
+    
+    /**
+     * @brief 设置紧凑模式
+     * @param enable 是否启用紧凑模式
+     * 
+     * 在小屏幕时使用，隐藏次要信息，减小间距
+     */
+    void setCompactMode(bool enable);
+    
+    /**
+     * @brief 设置标准模式
+     * @param enable 是否启用标准模式
+     * 
+     * 默认布局模式，适合大多数屏幕
+     */
+    void setStandardMode(bool enable);
+    
+    /**
+     * @brief 设置宽屏模式
+     * @param enable 是否启用宽屏模式
+     * 
+     * 在大屏幕时使用，增大间距和字体
+     */
+    void setWideScreenMode(bool enable);
+    
+    /**
+     * @brief 调整UI缩放
+     * @param width 窗口宽度
+     * @param height 窗口高度
+     * 
+     * 根据窗口大小动态调整字体、图标和间距
+     */
+    void adjustUIScale(int width, int height);
+    
+    /**
+     * @brief 为设备管理页设置响应式布局
+     */
+    void setupDeviceManagementResponsiveLayout();
+    
+    /**
+     * @brief 为电机控制页设置响应式布局
+     */
+    void setupMotorControlResponsiveLayout();
+    
+    /**
+     * @brief 为传感器监控页设置响应式布局
+     */
+    void setupSensorMonitorResponsiveLayout();
+    
+    /**
+     * @brief 为日志查看页设置响应式布局
+     */
+    void setupLogViewerResponsiveLayout();
+    
+    /**
+     * @brief 保存窗口状态
+     * 
+     * 保存窗口大小、位置和分割器状态到设置
+     */
+    void saveWindowState();
+    
+    /**
+     * @brief 恢复窗口状态
+     * 
+     * 从设置中恢复上次的窗口状态
+     */
+    void restoreWindowState();
     
     // ===== 通用辅助方法 =====
     
@@ -501,6 +593,24 @@ private:
 private:
     // UI对象
     Ui::MainWindow *ui;
+
+    // ===== 响应式布局相关成员变量 ===== <-- 在成员变量section添加
+    
+    // 布局相关
+    QSplitter* m_devicePageSplitter;        ///< 设备管理页分割器
+    QSplitter* m_sensorPageSplitter;        ///< 传感器页分割器
+    
+    // 布局模式
+    enum class LayoutMode {
+        Compact,    ///< 紧凑模式 (宽度 < 1024)
+        Standard,   ///< 标准模式 (1024 <= 宽度 < 1600)
+        Wide        ///< 宽屏模式 (宽度 >= 1600)
+    };
+    LayoutMode m_currentLayoutMode;         ///< 当前布局模式
+    
+    // 窗口状态
+    QSize m_lastWindowSize;                 ///< 上次窗口大小
+    bool m_isResponsiveLayoutEnabled;       ///< 是否启用响应式布局
     
     // ===== 第一页：设备管理相关成员变量 =====
     
@@ -563,6 +673,12 @@ private:
     
     // 常量
     static const int MAX_COMMUNICATION_LOG_LINES = 1000;  ///< 通信日志最大行数
+    static const int MIN_WINDOW_WIDTH = 800;     ///< 最小窗口宽度
+    static const int MIN_WINDOW_HEIGHT = 600;    ///< 最小窗口高度
+    static const int COMPACT_MODE_THRESHOLD = 1024;   ///< 紧凑模式阈值
+    static const int WIDE_MODE_THRESHOLD = 1600;      ///< 宽屏模式阈值
+    static const int MAX_COMMUNICATION_LOG_LINES = 1000;
+    static const int MAX_LOG_DISPLAY_LINES = 10000;
 };
 
 #endif // MAINWINDOW_H

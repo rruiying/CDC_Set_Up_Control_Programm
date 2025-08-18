@@ -25,7 +25,7 @@ target_include_directories(core_lib PUBLIC
 )
 
 target_link_libraries(core_lib PUBLIC
-    Qt5::Core
+    Qt6::Core
     models_lib
     hardware_lib
     utils_lib

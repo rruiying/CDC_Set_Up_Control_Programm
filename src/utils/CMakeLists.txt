@@ -23,7 +23,7 @@ target_include_directories(utils_lib PUBLIC
 )
 
 target_link_libraries(utils_lib PUBLIC
-    Qt5::Core
+    Qt6::Core
 )
 
 set_target_properties(utils_lib PROPERTIES AUTOMOC ON)
