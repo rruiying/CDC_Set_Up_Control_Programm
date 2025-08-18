@@ -135,13 +135,12 @@ bool SerialInterface::open(const std::string& portName, int baudRate) {
 }
 
 bool SerialInterface::open(const std::string& portName, const SerialPortConfig& config) {
-    std::lock_guard<std::mutex> lock(mutex);
     
-    // 如果已经打开，先关闭
     if (connected) {
-        platformClose();
+        close();  // close() 会自己获取锁
     }
     
+    std::lock_guard<std::mutex> lock(mutex);
     currentPort = portName;
     currentConfig = config;
     

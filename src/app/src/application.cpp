@@ -7,7 +7,6 @@
 #include <QDir>
 #include "../../ui/include/mainwindow.h"
 #include "../../hardware/include/serial_interface.h"
-#include "../../hardware/include/motor_interface.h"
 #include "../../hardware/include/sensor_interface.h"
 #include "../../core/include/motor_controller.h"
 #include "../../core/include/sensor_manager.h"
@@ -17,7 +16,6 @@
 #include "../../data/include/export_manager.h"
 #include "../../data/include/file_manager.h"
 #include "../../utils/include/logger.h"
-#include "../../utils/include/config_manager.h"
 #include "../../models/include/system_config.h"
 
 Application::Application(QObject* parent)

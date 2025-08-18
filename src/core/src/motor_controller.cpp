@@ -9,7 +9,7 @@
 
 MotorController::MotorController(std::shared_ptr<SerialInterface> serialInterface,
                                  std::shared_ptr<SafetyManager> safetyManager)
-    : m_serial(serialInterface), m_safety(safetyManager) {
+    : serial(serialInterface), safety(safetyManager) {
     
     // 从系统配置加载速度设置
     speed = SystemConfig::getInstance().getMotorSpeed();

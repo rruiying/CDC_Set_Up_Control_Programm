@@ -677,8 +677,6 @@ private:
     static const int MIN_WINDOW_HEIGHT = 600;    ///< 最小窗口高度
     static const int COMPACT_MODE_THRESHOLD = 1024;   ///< 紧凑模式阈值
     static const int WIDE_MODE_THRESHOLD = 1600;      ///< 宽屏模式阈值
-    static const int MAX_COMMUNICATION_LOG_LINES = 1000;
-    static const int MAX_LOG_DISPLAY_LINES = 10000;
 };
 
 #endif // MAINWINDOW_H

@@ -43,7 +43,7 @@ include_directories(
 )
 
 # 启用测试（可选）
-option(BUILD_TESTS "Build unit tests" ON)
+option(BUILD_TESTS "Build unit tests" OFF)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

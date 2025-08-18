@@ -1,17 +1,23 @@
-// src/hardware/include/sensor_interface.h
 #pragma once
-#include <QObject>
-#include <QTimer>
+
+#include <memory>
+#include <thread>
+#include <atomic>
+#include <functional>
+#include <mutex>
+#include <chrono>
 #include "../../models/include/sensor_data.h"
 
-class QtSerialInterface;
+class SerialInterface;
 
-class SensorInterface : public QObject {
-    Q_OBJECT
-    
+class SensorInterface {
 public:
-    explicit SensorInterface(QtSerialInterface* serial, QObject* parent = nullptr);
+    explicit SensorInterface(std::shared_ptr<SerialInterface> serial);
     ~SensorInterface();
+    
+    // 回调函数类型
+    using DataCallback = std::function<void(const SensorData&)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
     
     // 数据请求
     bool requestAllSensorData();
@@ -23,34 +29,31 @@ public:
     // 自动轮询
     void startPolling(int intervalMs = 100);
     void stopPolling();
-    bool isPolling() const;
+    bool isPolling() const { return polling; }
     
     // 数据处理
-    void processData(const QString& data);
+    void processData(const std::string& data);
     
     // 获取最新数据
-    SensorData getLatestData() const { return m_latestData; }
+    SensorData getLatestData() const;
     
-signals:
-    void sensorDataReceived(const SensorData& data);
-    void dataError(const QString& error);
-    void connectionLost();
-    
-private slots:
-    void onSerialDataReceived(const QString& line);
-    void onPollTimer();
+    // 设置回调
+    void setDataCallback(DataCallback callback);
+    void setErrorCallback(ErrorCallback callback);
     
 private:
-    QtSerialInterface* m_serial;
-    QTimer* m_pollTimer;
+    void pollThread();
+    bool validateSensorData(const SensorData& data);
+    
+    std::shared_ptr<SerialInterface> m_serial;
+    std::unique_ptr<std::thread> m_pollThread;
+    std::atomic<bool> polling{false};
+    std::atomic<bool> stopPollingFlag{false};
+    std::atomic<int> pollInterval{100};
+    
+    mutable std::mutex dataMutex;
     SensorData m_latestData;
     
-    // 解析不同类型的数据
-    bool parseDistanceData(const QString& data);
-    bool parseAngleData(const QString& data);
-    bool parseTemperatureData(const QString& data);
-    bool parseCapacitanceData(const QString& data);
-    
-    // 验证数据
-    bool validateSensorData(const SensorData& data);
+    DataCallback dataCallback;
+    ErrorCallback errorCallback;
 };

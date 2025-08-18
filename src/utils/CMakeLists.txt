@@ -2,13 +2,11 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(UTILS_HEADERS
-    include/config_manager.h
     include/logger.h
     include/math_utils.h
 )
 
 set(UTILS_SOURCES
-    src/config_manager.cpp
     src/logger.cpp
     src/math_utils.cpp
 )

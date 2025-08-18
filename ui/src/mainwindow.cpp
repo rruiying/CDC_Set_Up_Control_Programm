@@ -21,6 +21,7 @@
 #include <QDebug>          // 添加这行
 #include <QMessageBox>     // 如果需要的话
 #include <QTimer>
+#include <QGroupBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)

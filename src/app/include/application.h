@@ -4,7 +4,6 @@
 
 // 前向声明
 class SerialInterface;
-class MotorInterface;
 class SensorInterface;
 class MotorController;
 class SensorManager;
@@ -53,7 +52,6 @@ private slots:
 private:
     // 硬件层 - 使用 shared_ptr 因为多个组件可能共享
     std::shared_ptr<SerialInterface> m_serialInterface;
-    std::unique_ptr<MotorInterface> m_motorInterface;
     std::unique_ptr<SensorInterface> m_sensorInterface;
     
     // 核心层

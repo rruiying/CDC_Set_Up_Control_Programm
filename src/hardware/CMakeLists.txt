@@ -3,14 +3,12 @@ cmake_minimum_required(VERSION 3.16)
 
 set(HARDWARE_HEADERS
     include/command_protocol.h
-    include/motor_interface.h
     include/sensor_interface.h
     include/serial_interface.h
 )
 
 set(HARDWARE_SOURCES
     src/command_protocol.cpp
-    src/motor_interface.cpp
     src/sensor_interface.cpp
     src/serial_interface.cpp
 )
