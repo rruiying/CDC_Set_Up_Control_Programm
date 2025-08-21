@@ -11,7 +11,7 @@
  */
 struct DataStatistics {
     // 数据计数
-    size_t dataCount = 0;
+    int dataCount = 0;
     
     // 高度统计
     double meanHeight = 0.0;
@@ -45,6 +45,7 @@ struct DataStatistics {
     double variance = 0.0;
     double skewness = 0.0;
     double kurtosis = 0.0;
+    double median = 0.0;
     
     // 兼容旧版本的别名
     int totalRecords() const { return static_cast<int>(dataCount); }

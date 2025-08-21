@@ -1,5 +1,7 @@
-// src/hardware/src/command_protocol.cpp
 #include "../include/command_protocol.h"
+#include "../../models/include/sensor_data.h"
+#include "../../utils/include/string_utils.h"
+#include "../../models/include/physics_constants.h"
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -217,33 +219,6 @@ std::string CommandProtocol::formatCommand(const std::string& cmd, const std::st
         return cmd + TERMINATOR;
     }
     return cmd + SEPARATOR + params + TERMINATOR;
-}
-
-std::vector<std::string> CommandProtocol::splitString(const std::string& str, const std::string& delimiter) {
-    std::vector<std::string> tokens;
-    size_t start = 0;
-    size_t end = str.find(delimiter);
-    
-    while (end != std::string::npos) {
-        tokens.push_back(str.substr(start, end - start));
-        start = end + delimiter.length();
-        end = str.find(delimiter, start);
-    }
-    
-    if (start < str.length()) {
-        tokens.push_back(str.substr(start));
-    }
-    
-    return tokens;
-}
-
-std::string CommandProtocol::trimString(const std::string& str) {
-    size_t first = str.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) {
-        return "";
-    }
-    size_t last = str.find_last_not_of(" \t\r\n");
-    return str.substr(first, last - first + 1);
 }
 
 bool CommandProtocol::hasTerminator(const std::string& str) {

@@ -4,6 +4,7 @@
 #include <QMessageBox>
 #include "app/include/application.h"
 #include "utils/include/logger.h"
+#include "../../ui/include/mainwindow.h"
 
 // 自定义消息处理器
 void messageHandler(QtMsgType type, const QMessageLogContext& context, const QString& msg) {
@@ -52,22 +53,18 @@ int main(int argc, char *argv[]) {
     qtApp.setApplicationName("CDC Control Program");
     qtApp.setApplicationVersion("1.0.0");
     
-    // 安装消息处理器
     qInstallMessageHandler(messageHandler);
-    
-    // 初始化日志系统
+
     Logger::getInstance().setLogFile("./runtime/logs/cdc_control.log");
-    Logger::getInstance().setLogLevel(LogLevel::INFO);
+    Logger::getInstance().setMinLevel(Logger::LogLevel::INFO);
     Logger::getInstance().info("CDC Control Program starting...");
     
-    // 设置样式（可选）
     QFile styleFile(":/styles/app_style.qss");
     if (styleFile.open(QFile::ReadOnly)) {
         QTextStream stream(&styleFile);
         qtApp.setStyleSheet(stream.readAll());
     }
     
-    // 创建并初始化应用程序
     Application app;
     
     if (!app.initialize()) {

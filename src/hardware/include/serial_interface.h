@@ -1,4 +1,3 @@
-// src/hardware/include/serial_interface.h
 #ifndef SERIAL_INTERFACE_H
 #define SERIAL_INTERFACE_H
 

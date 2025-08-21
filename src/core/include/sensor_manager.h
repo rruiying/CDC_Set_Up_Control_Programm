@@ -1,4 +1,3 @@
-// src/core/include/sensor_manager.h
 #ifndef SENSOR_MANAGER_H
 #define SENSOR_MANAGER_H
 
@@ -93,7 +92,7 @@ public:
     
     // 统计信息
     SensorStatistics getStatistics() const;
-    int getReadCount() const { return statistics.totalReads; }
+    int getReadCount() const;
     void resetStatistics();
     
     // 重置
@@ -109,7 +108,6 @@ private:
     void updateStatistics(bool success, int64_t readTime);
     void notifyDataReceived(const SensorData& data);
     void notifyError(const std::string& error);
-    int64_t getCurrentTimestamp() const;
     
     // 成员变量
     std::shared_ptr<SerialInterface> serial;

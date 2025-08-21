@@ -1,5 +1,5 @@
-// src/models/src/device_info.cpp
 #include "../include/device_info.h"
+#include "../../utils/include/time_utils.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -11,7 +11,7 @@ DeviceInfo::DeviceInfo()
       connectionStatus(ConnectionStatus::DISCONNECTED),
       lastConnectTime(0),
       lastDisconnectTime(0),
-      lastActivityTime(getCurrentTimestamp()),
+      lastActivityTime(TimeUtils::getCurrentTimestamp()),
       currentSessionStart(0),
       connectionCount(0),
       disconnectionCount(0),
@@ -28,7 +28,7 @@ DeviceInfo::DeviceInfo(const std::string& name, const std::string& portName, int
       connectionStatus(ConnectionStatus::DISCONNECTED),
       lastConnectTime(0),
       lastDisconnectTime(0),
-      lastActivityTime(getCurrentTimestamp()),
+      lastActivityTime(TimeUtils::getCurrentTimestamp()),
       currentSessionStart(0),
       connectionCount(0),
       disconnectionCount(0),
@@ -83,9 +83,9 @@ void DeviceInfo::setConnectionStatus(ConnectionStatus status) {
     if (connectionStatus == status) {
         return;  // 状态未改变
     }
-    
-    auto now = getCurrentTimestamp();
-    
+
+    auto now = TimeUtils::getCurrentTimestamp();
+
     // 处理状态转换
     if (status == ConnectionStatus::CONNECTED && 
         connectionStatus != ConnectionStatus::CONNECTED) {
@@ -126,7 +126,7 @@ std::string DeviceInfo::getConnectionStatusString() const {
 }
 
 void DeviceInfo::updateLastActivityTime() {
-    lastActivityTime = getCurrentTimestamp();
+    lastActivityTime = TimeUtils::getCurrentTimestamp();
 }
 
 int64_t DeviceInfo::getTotalConnectedTime() const {
@@ -134,7 +134,7 @@ int64_t DeviceInfo::getTotalConnectedTime() const {
     
     // 如果当前正在连接，加上当前会话时间
     if (connectionStatus == ConnectionStatus::CONNECTED && currentSessionStart > 0) {
-        total += (getCurrentTimestamp() - currentSessionStart);
+        total += (TimeUtils::getCurrentTimestamp() - currentSessionStart);
     }
     
     return total;
@@ -142,7 +142,7 @@ int64_t DeviceInfo::getTotalConnectedTime() const {
 
 void DeviceInfo::recordError(const std::string& errorMsg) {
     errorCount++;
-    lastErrorTime = getCurrentTimestamp();
+    lastErrorTime = TimeUtils::getCurrentTimestamp();
     lastErrorMessage = errorMsg;
     updateLastActivityTime();
 }
@@ -265,7 +265,7 @@ void DeviceInfo::generateDeviceId() {
 DeviceType DeviceInfo::inferDeviceType() const {
     // 根据名称推断设备类型
     std::string lowerName = name;
-    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     
     if (lowerName.find("motor") != std::string::npos ||
         lowerName.find("controller") != std::string::npos) {
@@ -279,11 +279,4 @@ DeviceType DeviceInfo::inferDeviceType() const {
     }
     
     return DeviceType::UNKNOWN;
-}
-
-int64_t DeviceInfo::getCurrentTimestamp() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto duration = now.time_since_epoch();
-    return duration_cast<milliseconds>(duration).count();
 }

@@ -1,7 +1,8 @@
-// src/core/src/safety_manager.cpp
 #include "../include/safety_manager.h"
+#include <mutex>
 #include "../../models/include/system_config.h"
 #include "../../utils/include/logger.h"
+#include "../../utils/include/time_utils.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
@@ -99,12 +100,13 @@ void SafetyManager::setCustomLimits(double minHeight, double maxHeight,
 
 void SafetyManager::getEffectiveLimits(double& minHeight, double& maxHeight,
                                        double& minAngle, double& maxAngle) const {
-    minHeight = minHeightLimit;
-    maxHeight = maxHeightLimit;
-    minAngle = minAngleLimit;
-    maxAngle = maxAngleLimit;
-    
-    // 应用模式修饰符
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        minHeight = minHeightLimit;
+        maxHeight = maxHeightLimit;
+        minAngle = minAngleLimit;
+        maxAngle = maxAngleLimit;
+    }
     applyModeModifiers(minHeight, maxHeight, minAngle, maxAngle);
 }
 
@@ -289,7 +291,7 @@ void SafetyManager::recordViolation(const std::string& reason, double height, do
     {
         std::lock_guard<std::mutex> lock(mutex);
         
-        SafetyViolation violation{getCurrentTimestamp(), reason, height, angle};
+        SafetyViolation violation{TimeUtils::getCurrentTimestamp(), reason, height, angle};
         violations.push_back(violation);
         
         // 限制历史大小
@@ -303,18 +305,18 @@ void SafetyManager::recordViolation(const std::string& reason, double height, do
 }
 
 void SafetyManager::notifyViolation(const std::string& reason) {
-    if (violationCallback) {
-        std::thread([this, reason]() {
-            violationCallback(reason);
-        }).detach();
+    ViolationCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = violationCallback; }
+    if (cb) {
+        cb(reason);
     }
 }
 
 void SafetyManager::notifyEmergencyStop(bool stopped) {
-    if (emergencyStopCallback) {
-        std::thread([this, stopped]() {
-            emergencyStopCallback(stopped);
-        }).detach();
+    EmergencyStopCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = emergencyStopCallback; }
+    if (cb) {
+        cb(stopped);
     }
 }
 
@@ -348,11 +350,4 @@ void SafetyManager::applyModeModifiers(double& minHeight, double& maxHeight,
     maxHeight = heightCenter + heightRange / 2.0;
     minAngle = angleCenter - angleRange / 2.0;
     maxAngle = angleCenter + angleRange / 2.0;
-}
-
-int64_t SafetyManager::getCurrentTimestamp() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto duration = now.time_since_epoch();
-    return duration_cast<milliseconds>(duration).count();
 }

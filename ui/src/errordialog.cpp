@@ -1,4 +1,3 @@
-// ui/src/errordialog.cpp
 #include "../include/errordialog.h"
 #include "../../src/utils/include/logger.h"
 #include <QApplication>
@@ -64,54 +63,50 @@ QString ErrorDialog::getErrorTypeString(ErrorType type)
 
 void ErrorDialog::setupUI()
 {
-    // 创建主布局
+
     mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 20, 20, 20);
     mainLayout->setSpacing(15);
-    
-    // 创建内容布局（图标 + 消息）
+
     contentLayout = new QHBoxLayout();
     contentLayout->setSpacing(15);
     
-    // 创建错误图标
     iconLabel = new QLabel();
     iconLabel->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxCritical).pixmap(32, 32));
     iconLabel->setAlignment(Qt::AlignTop);
     iconLabel->setFixedSize(32, 32);
-    
-    // 创建错误消息标签
+
     messageLabel = new QLabel();
     messageLabel->setText(getErrorMessage(errorType, errorMessage));
     messageLabel->setWordWrap(true);
     messageLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     messageLabel->setStyleSheet("QLabel { color: #333; font-size: 10pt; }");
     
-    // 添加到内容布局
+
     contentLayout->addWidget(iconLabel);
     contentLayout->addWidget(messageLabel, 1);
-    
-    // 创建按钮布局
+
     buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch(); // 左侧弹簧
     
-    // 创建确定按钮
+
     okButton = new QPushButton("确定");
     okButton->setDefault(true);
     okButton->setFixedSize(75, 25);
     okButton->setStyleSheet("QPushButton { min-width: 75px; }");
     
-    // 连接信号
+
     connect(okButton, &QPushButton::clicked, this, &ErrorDialog::onOkClicked);
     
     buttonLayout->addWidget(okButton);
-    buttonLayout->addStretch(); // 右侧弹簧
+    buttonLayout->addStretch(); 
     
-    // 添加到主布局
+
     mainLayout->addLayout(contentLayout);
-    mainLayout->addStretch(); // 中间弹簧
+    mainLayout->addStretch(); 
     mainLayout->addLayout(buttonLayout);
     
-    // 设置布局
+
     setLayout(mainLayout);
 }
 
@@ -119,17 +114,17 @@ QString ErrorDialog::getErrorTitle(ErrorType type) const
 {
     switch (type) {
         case CommunicationError:
-            return "通信错误";
+            return "communication error";
         case SafetyLimitError:
-            return "安全限位错误";
+            return "safety limit error";
         case FileOperationError:
-            return "文件操作错误";
+            return "file operation error";
         case HardwareError:
-            return "硬件错误";
+            return "hardware error";
         case DataValidationError:
-            return "数据验证错误";
+            return "data validation error";
         default:
-            return "系统错误";
+            return "system error";
     }
 }
 
@@ -139,28 +134,28 @@ QString ErrorDialog::getErrorMessage(ErrorType type, const QString& detail) cons
     
     switch (type) {
         case CommunicationError:
-            baseMessage = "设备通信出现问题。请检查设备连接状态和串口设置。";
+            baseMessage = "Device communication error. Please check the device connection status and serial port settings.";
             break;
         case SafetyLimitError:
-            baseMessage = "操作超出安全限位范围。请检查设定值是否在允许范围内。";
+            baseMessage = "Operation exceeded safety limit. Please check if the set value is within the allowed range.";
             break;
         case FileOperationError:
-            baseMessage = "文件操作失败。请检查文件路径和访问权限。";
+            baseMessage = "File operation failed. Please check the file path and access permissions.";
             break;
         case HardwareError:
-            baseMessage = "硬件设备出现故障。请检查设备连接和电源状态。";
+            baseMessage = "Hardware device error. Please check the device connection and power status.";
             break;
         case DataValidationError:
-            baseMessage = "输入数据格式不正确。请检查输入值的格式和范围。";
+            baseMessage = "Input data format is incorrect. Please check the format and range of the input values.";
             break;
         default:
-            baseMessage = "系统出现未知错误。";
+            baseMessage = "Unknown system error.";
             break;
     }
-    
-    // 如果有详细信息且不为空，添加提示查看日志
+
+    // If there is detailed information and it is not empty, add a prompt to check the logs
     if (!detail.isEmpty()) {
-        baseMessage += "\n\n详细错误信息请查看日志记录。";
+        baseMessage += "\n\nFor detailed error information, please check the log records.";
     }
     
     return baseMessage;

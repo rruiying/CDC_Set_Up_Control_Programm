@@ -196,7 +196,6 @@ private:
     void setError(const std::string& error);
     
     bool compressFile(const std::string& filename);
-    size_t getFileSize(const std::string& filename) const;
     
     // 成员变量
     mutable std::mutex mutex;

@@ -3,6 +3,7 @@
 #include <memory>
 
 // 前向声明
+class ApplicationController;  // 添加这个
 class SerialInterface;
 class SensorInterface;
 class MotorController;
@@ -22,7 +23,6 @@ public:
     explicit Application(QObject* parent = nullptr);
     ~Application();
     
-    // 初始化
     bool initialize();
     void shutdown();
     
@@ -32,11 +32,10 @@ public:
     SensorManager* getSensorManager() const { return m_sensorManager.get(); }
     SafetyManager* getSafetyManager() const { return m_safetyManager.get(); }
     DataRecorder* getDataRecorder() const { return m_dataRecorder.get(); }
+    ApplicationController* getController() const { return m_controller.get(); }
     
-    // 显示主窗口
     void showMainWindow();
     
-    // 应用程序状态
     bool isRunning() const { return m_isRunning; }
     QString getVersion() const { return "1.0.0"; }
     
@@ -50,23 +49,24 @@ private slots:
     void onCriticalError(const QString& error);
     
 private:
-    // 硬件层 - 使用 shared_ptr 因为多个组件可能共享
+    // 硬件层
     std::shared_ptr<SerialInterface> m_serialInterface;
     std::unique_ptr<SensorInterface> m_sensorInterface;
     
     // 核心层
-    std::unique_ptr<MotorController> m_motorController;
-    std::unique_ptr<SensorManager> m_sensorManager;
+    std::shared_ptr<MotorController> m_motorController;
+    std::shared_ptr<SensorManager> m_sensorManager;
     std::shared_ptr<SafetyManager> m_safetyManager;
-    std::unique_ptr<DataRecorder> m_dataRecorder;
+    std::shared_ptr<DataRecorder> m_dataRecorder;
     
     // 数据层
     std::unique_ptr<DataProcessor> m_dataProcessor;
-    std::unique_ptr<ExportManager> m_exportManager;
+    std::shared_ptr<ExportManager> m_exportManager;
     std::unique_ptr<FileManager> m_fileManager;
     
-    // UI
+    // UI和控制器
     std::unique_ptr<MainWindow> m_mainWindow;
+    std::unique_ptr<ApplicationController> m_controller;
     
     bool m_isRunning;
     

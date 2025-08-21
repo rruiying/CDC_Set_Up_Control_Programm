@@ -1,6 +1,7 @@
-// src/data/src/data_processor.cpp
 #include "../include/data_processor.h"
 #include "../../utils/include/logger.h"
+#include "../../models/include/physics_constants.h"
+#include "../../utils/include/statistics_utils.h"
 #include <algorithm>
 #include <numeric>
 #include <cmath>
@@ -8,7 +9,7 @@
 #include <set>
 
 DataProcessor::DataProcessor() {
-    workBuffer.reserve(10000); // 预分配工作缓冲区
+    workBuffer.reserve(10000); 
     LOG_INFO("DataProcessor initialized");
 }
 
@@ -21,22 +22,18 @@ DataStatistics DataProcessor::calculateStatistics(const std::vector<MeasurementD
         return stats;
     }
     
-    // 提取各字段值
     auto heights = extractFieldValues(data, DataField::HEIGHT);
     auto angles = extractFieldValues(data, DataField::ANGLE);
     auto capacitances = extractFieldValues(data, DataField::CAPACITANCE);
-    
-    // 计算均值
-    stats.meanHeight = calculateMean(heights);
-    stats.meanAngle = calculateMean(angles);
-    stats.meanCapacitance = calculateMean(capacitances);
-    
-    // 计算标准差
-    stats.stdDevHeight = calculateStdDev(heights, stats.meanHeight);
-    stats.stdDevAngle = calculateStdDev(angles, stats.meanAngle);
-    stats.stdDevCapacitance = calculateStdDev(capacitances, stats.meanCapacitance);
-    
-    // 计算最小/最大值
+
+    stats.meanHeight = StatisticsUtils::mean(heights);
+    stats.meanAngle = StatisticsUtils::mean(angles);
+    stats.meanCapacitance = StatisticsUtils::mean(capacitances);
+
+    stats.stdDevHeight = StatisticsUtils::stdDev(heights, stats.meanHeight);
+    stats.stdDevAngle = StatisticsUtils::stdDev(angles, stats.meanAngle);
+    stats.stdDevCapacitance = StatisticsUtils::stdDev(capacitances, stats.meanCapacitance);
+
     auto [minH, maxH] = std::minmax_element(heights.begin(), heights.end());
     stats.minHeight = *minH;
     stats.maxHeight = *maxH;
@@ -49,11 +46,10 @@ DataStatistics DataProcessor::calculateStatistics(const std::vector<MeasurementD
     stats.minCapacitance = *minC;
     stats.maxCapacitance = *maxC;
     
-    // 计算高级统计量
-    stats.variance = calculateVariance(heights, stats.meanHeight);
-    stats.skewness = calculateSkewness(heights, stats.meanHeight, stats.stdDevHeight);
-    stats.kurtosis = calculateKurtosis(heights, stats.meanHeight, stats.stdDevHeight);
-    
+    stats.variance = StatisticsUtils::variance(heights, stats.meanHeight);
+    stats.skewness = StatisticsUtils::skewness(heights, stats.meanHeight, stats.stdDevHeight);
+    stats.kurtosis = StatisticsUtils::kurtosis(heights, stats.meanHeight, stats.stdDevHeight);
+
     return stats;
 }
 
@@ -111,7 +107,7 @@ LinearRegression DataProcessor::performLinearRegression(const std::vector<Measur
         sumX2 += xValues[i] * xValues[i];
     }
     
-    // 计算斜率和截距
+
     double denominator = n * sumX2 - sumX * sumX;
     if (std::abs(denominator) < 1e-10) {
         LOG_WARNING("Near-zero denominator in linear regression");
@@ -121,7 +117,7 @@ LinearRegression DataProcessor::performLinearRegression(const std::vector<Measur
     result.slope = (n * sumXY - sumX * sumY) / denominator;
     result.intercept = (sumY - result.slope * sumX) / n;
     
-    // 计算R²和标准误差
+
     double ssTotal = 0.0, ssResidual = 0.0;
     double meanY = sumY / n;
     
@@ -155,7 +151,6 @@ PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<Measurem
     auto xValues = extractFieldValues(data, xField);
     auto yValues = extractFieldValues(data, yField);
 
-    // 构建范德蒙矩阵
     int n = data.size();
     int m = degree + 1;
 
@@ -167,12 +162,11 @@ PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<Measurem
         }
     }
 
-    // 使用最小二乘法求解
-    // 这里使用简化的正规方程方法，实际应用中可能需要更稳定的算法
+
     std::vector<std::vector<double>> ata(m, std::vector<double>(m, 0.0));
     std::vector<double> atb(m, 0.0);
 
-    // 计算 A^T * A 和 A^T * b
+
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < m; ++j) {
             for (int k = 0; k < n; ++k) {
@@ -185,10 +179,9 @@ PolynomialFit DataProcessor::performPolynomialFitting(const std::vector<Measurem
         }
     }
 
-    // 简单的高斯消元法求解（替代 solveLinearSystem）
     result.coefficients = gaussianElimination(ata, atb);
 
-    // 计算拟合质量
+
     double ssTotal = 0.0, ssResidual = 0.0;
     double meanY = calculateMean(yValues);
 
@@ -230,7 +223,7 @@ std::vector<MeasurementData> DataProcessor::smoothData(const std::vector<Measure
     
     std::vector<MeasurementData> smoothed = data;
     
-    // 对每个数值字段进行平滑
+
     std::vector<DataField> fieldsToSmooth = {
         DataField::HEIGHT, DataField::ANGLE, DataField::CAPACITANCE,
         DataField::UPPER_SENSOR_1, DataField::UPPER_SENSOR_2,
@@ -882,7 +875,13 @@ std::vector<double> DataProcessor::medianFilter(const std::vector<double>& data,
 std::vector<std::complex<double>> DataProcessor::fft(const std::vector<std::complex<double>>& data) const {
     int n = data.size();
     
-    if (n <= 1) return data;
+    if (n <= 1 || n > 65536) { 
+        return data;
+    }
+
+    if (n <= 32) {
+        return dft(data);
+    }
     
     // 分成偶数和奇数部分
     std::vector<std::complex<double>> even(n/2), odd(n/2);
@@ -898,7 +897,7 @@ std::vector<std::complex<double>> DataProcessor::fft(const std::vector<std::comp
     // 合并结果
     std::vector<std::complex<double>> result(n);
     for (int k = 0; k < n/2; ++k) {
-        std::complex<double> t = std::polar(1.0, -2 * M_PI * k / n) * oddFFT[k];
+        std::complex<double> t = std::polar(1.0, -2 * PhysicsConstants::PI * k / n) * oddFFT[k];
         result[k] = evenFFT[k] + t;
         result[k + n/2] = evenFFT[k] - t;
     }
@@ -949,5 +948,19 @@ double DataProcessor::cubicInterpolate(const std::vector<double>& x,
            t2 * (p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3) +
            t3 * (-0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3);
 }
-// 注意：完整的实现需要包含更多辅助方法，如FFT实现、高斯平滑、聚类算法等
-// 这些复杂算法通常会使用专门的数学库（如FFTW、Eigen等）
+
+std::vector<std::complex<double>> DataProcessor::dft(const std::vector<std::complex<double>>& data) const {
+    int n = data.size();
+    std::vector<std::complex<double>> result(n);
+    
+    for (int k = 0; k < n; ++k) {
+        std::complex<double> sum(0, 0);
+        for (int t = 0; t < n; ++t) {
+            double angle = -2 * PhysicsConstants::PI * t * k / n;
+            sum += data[t] * std::complex<double>(cos(angle), sin(angle));
+        }
+        result[k] = sum;
+    }
+    
+    return result;
+}

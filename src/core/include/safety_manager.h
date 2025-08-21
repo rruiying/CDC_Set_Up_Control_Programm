@@ -1,4 +1,3 @@
-// src/core/include/safety_manager.h
 #ifndef SAFETY_MANAGER_H
 #define SAFETY_MANAGER_H
 
@@ -139,7 +138,6 @@ private:
     void notifyEmergencyStop(bool stopped);
     void applyModeModifiers(double& minHeight, double& maxHeight,
                            double& minAngle, double& maxAngle) const;
-    int64_t getCurrentTimestamp() const;
     
     // 成员变量
     mutable std::mutex mutex;

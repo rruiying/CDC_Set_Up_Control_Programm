@@ -1,5 +1,5 @@
-// src/app/src/application.cpp
 #include "../include/application.h"
+#include "../include/application_controller.h"
 #include <QApplication>
 #include <QMessageBox>
 #include <QMainWindow>  // 添加这个
@@ -38,6 +38,8 @@ bool Application::initialize() {
     dir.mkpath("./runtime/data");
     dir.mkpath("./runtime/logs");
     dir.mkpath("./runtime/config");
+
+    m_controller = std::make_unique<ApplicationController>();
     
     // 加载系统配置
 //    SystemConfig::getInstance().loadFromFile("./runtime/config/system_config.json");
@@ -57,6 +59,15 @@ bool Application::initialize() {
         LOG_ERROR("Failed to initialize data layer");
         return false;
     }
+
+    m_controller->initialize(
+        m_serialInterface,
+        m_motorController,
+        m_sensorManager,
+        m_safetyManager,
+        m_dataRecorder,
+        m_exportManager
+    );
     
     if (!initializeUI()) {
         LOG_ERROR("Failed to initialize UI");
@@ -158,23 +169,44 @@ bool Application::initializeHardware() {
 
 bool Application::initializeCore() {
     try {
-        // 1. 先创建 SafetyManager (shared_ptr)
+        LOG_INFO("Creating SafetyManager...");
         m_safetyManager = std::make_shared<SafetyManager>();
+        if (!m_safetyManager) {
+            LOG_ERROR("SafetyManager is null after creation");
+            return false;
+        }
         
-        // 2. 创建 MotorController - 使用正确的构造函数参数
+        LOG_INFO("Creating MotorController...");
         m_motorController = std::make_unique<MotorController>(
             m_serialInterface,
-            m_safetyManager  // 现在都是 shared_ptr
+            m_safetyManager
         );
+        if (!m_motorController) {
+            LOG_ERROR("MotorController is null after creation");
+            return false;
+        }
         
-        // 3. 创建其他组件
+        LOG_INFO("Creating SensorManager...");
         m_sensorManager = std::make_unique<SensorManager>(m_serialInterface);
+        if (!m_sensorManager) {
+            LOG_ERROR("SensorManager is null after creation");
+            return false;
+        }
+
+        LOG_INFO("Creating DataRecorder...");
         m_dataRecorder = std::make_unique<DataRecorder>();
-        
-        LOG_INFO("Core layer initialized");
+        if (!m_dataRecorder) {
+            LOG_ERROR("DataRecorder is null after creation");
+            return false;
+        }
+
+        LOG_INFO("Core layer initialized successfully");
         return true;
     } catch (const std::exception& e) {
         LOG_ERROR("Core initialization failed: " + std::string(e.what()));
+        return false;
+    } catch (...) {
+        LOG_ERROR("Core initialization failed: unknown exception");
         return false;
     }
 }
@@ -197,7 +229,7 @@ bool Application::initializeData() {
 bool Application::initializeUI() {
     try {
         // 创建主窗口
-        m_mainWindow = std::make_unique<MainWindow>();
+        m_mainWindow = std::make_unique<MainWindow>(m_controller.get());
         
         LOG_INFO("UI initialized");
         return true;

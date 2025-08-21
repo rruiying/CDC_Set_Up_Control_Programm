@@ -1,4 +1,3 @@
-// ui/src/confirmdialog.cpp
 #include "../include/confirmdialog.h"
 #include "../../src/utils/include/logger.h"
 #include <QApplication>
@@ -28,21 +27,21 @@ ConfirmDialog::ConfirmDialog(QWidget* parent,
     , cancelButtonText(cancelText)
     , userConfirmed(false)
 {
-    // 设置对话框属性
+    // Set dialog properties
     setModal(true);
     setWindowTitle(dialogTitle);
     setWindowFlags(Qt::Dialog | Qt::WindowTitleHint | Qt::WindowSystemMenuHint);
     
-    // 设置固定大小
+    // Set fixed size
     setFixedSize(400, 150);
-    
-    // 设置UI
+
+    // Set up UI
     setupUI();
-    
-    // 居中显示
+
+    // Center dialog
     centerDialog();
     
-    // 记录确认对话框的显示
+    // Log dialog display
     Logger::getInstance().info("Confirm dialog shown: " + message.toStdString());
 }
 
@@ -69,122 +68,128 @@ bool ConfirmDialog::confirm(QWidget* parent,
 
 bool ConfirmDialog::confirmDeleteDevice(QWidget* parent, const QString& deviceName)
 {
-    QString message = QString("确定要删除设备 '%1' 吗？\n\n删除后将断开与该设备的连接，且无法恢复。")
+    QString message = QString("Are you sure you want to delete device '%1'?\n\n"
+        "This will disconnect the device and cannot be undone.")
                      .arg(deviceName);
     
-    return confirm(parent, message, "删除设备", "删除", "取消");
+    return confirm(parent, message, "Delete Device", "Delete", "Cancel");
 }
 
 bool ConfirmDialog::confirmEmergencyStop(QWidget* parent)
 {
-    QString message = "确定要执行紧急停止吗？\n\n这将立即停止所有电机运动。";
+    QString message = "Are you sure you want to execute emergency stop?\n\n"
+    "This will immediately stop all motor movements.";
     
-    return confirm(parent, message, "紧急停止", "立即停止", "取消");
+    return confirm(parent, message, "Emergency Stop", "Stop Now", "Cancel");
 }
 
 bool ConfirmDialog::confirmClearLog(QWidget* parent)
 {
-    QString message = "确定要清空所有日志记录吗？\n\n清空后将无法恢复已删除的日志信息。";
+    QString message = "Are you sure you want to clear all log records?\n\n"
+    "Cleared logs cannot be recovered.";
     
-    return confirm(parent, message, "清空日志", "清空", "取消");
+    return confirm(parent, message, "Clear Log", "Clear", "Cancel");
 }
 
 bool ConfirmDialog::confirmResetSettings(QWidget* parent)
 {
-    QString message = "确定要重置所有系统设置到默认值吗？\n\n重置后当前的配置将丢失。";
+    QString message = "Are you sure you want to reset all system settings to default?\n\n"
+    "Current configuration will be lost.";
     
-    return confirm(parent, message, "重置设置", "重置", "取消");
+    return confirm(parent, message, "Reset Settings", "Reset", "Cancel");
 }
 
 bool ConfirmDialog::confirmOverwriteFile(QWidget* parent, const QString& fileName)
 {
-    QString message = QString("文件 '%1' 已存在。\n\n是否要覆盖现有文件？")
+    QString message = QString("File '%1' already exists.\n\n"
+        "Do you want to overwrite the existing file?")
                      .arg(fileName);
     
-    return confirm(parent, message, "文件覆盖", "覆盖", "取消");
+    return confirm(parent, message, "File Overwrite", "Overwrite", "Cancel");
 }
 
 bool ConfirmDialog::confirmDisconnectDevice(QWidget* parent, const QString& deviceName)
 {
-    QString message = QString("确定要断开设备 '%1' 的连接吗？\n\n断开后将无法与该设备通信。")
+    QString message = QString("Are you sure you want to disconnect device '%1'?\n\n"
+        "Communication with the device will be terminated.")
                      .arg(deviceName);
-    
-    return confirm(parent, message, "断开连接", "断开", "取消");
+
+    return confirm(parent, message, "Disconnect Device", "Disconnect", "Cancel");
 }
 
 void ConfirmDialog::setupUI()
 {
-    // 创建主布局
+    // Create main layout
     mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 20, 20, 20);
     mainLayout->setSpacing(15);
-    
-    // 创建内容布局（图标 + 消息）
+
+    // Create content layout (icon + message)
     contentLayout = new QHBoxLayout();
     contentLayout->setSpacing(15);
-    
-    // 创建确认图标
+
+    // Create confirmation icon
     iconLabel = new QLabel();
     iconLabel->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxQuestion).pixmap(32, 32));
     iconLabel->setAlignment(Qt::AlignTop);
     iconLabel->setFixedSize(32, 32);
-    
-    // 创建确认消息标签
+
+    // Create confirmation message label
     messageLabel = new QLabel();
     messageLabel->setText(confirmMessage);
     messageLabel->setWordWrap(true);
     messageLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     messageLabel->setStyleSheet("QLabel { color: #333; font-size: 10pt; }");
-    
-    // 添加到内容布局
+
+    // Add to content layout
     contentLayout->addWidget(iconLabel);
     contentLayout->addWidget(messageLabel, 1);
-    
-    // 创建按钮布局
+
+    // Create button layout
     buttonLayout = new QHBoxLayout();
-    buttonLayout->addStretch(); // 左侧弹簧
-    
-    // 创建确认按钮
+    buttonLayout->addStretch(); // Left stretch
+
+    // Create confirmation button
     confirmButton = new QPushButton(confirmButtonText);
     confirmButton->setDefault(true);
     confirmButton->setFixedSize(75, 25);
     confirmButton->setStyleSheet("QPushButton { min-width: 75px; }");
-    
-    // 创建取消按钮
+
+    // Create cancel button
     cancelButton = new QPushButton(cancelButtonText);
     cancelButton->setFixedSize(75, 25);
     cancelButton->setStyleSheet("QPushButton { min-width: 75px; }");
-    
-    // 连接信号
+
+    // Connect signals
     connect(confirmButton, &QPushButton::clicked, this, &ConfirmDialog::onConfirmClicked);
     connect(cancelButton, &QPushButton::clicked, this, &ConfirmDialog::onCancelClicked);
-    
-    // 添加按钮到布局
+
+    // Add buttons to layout
     buttonLayout->addWidget(confirmButton);
-    buttonLayout->addSpacing(10); // 按钮间距
+    buttonLayout->addSpacing(10);
     buttonLayout->addWidget(cancelButton);
-    buttonLayout->addStretch(); // 右侧弹簧
-    
-    // 添加到主布局
+    buttonLayout->addStretch();
+
+    // Add to main layout
     mainLayout->addLayout(contentLayout);
-    mainLayout->addStretch(); // 中间弹簧
+    mainLayout->addStretch();
     mainLayout->addLayout(buttonLayout);
-    
-    // 设置布局
+
+    // Set layout
     setLayout(mainLayout);
-    
-    // 设置焦点到确认按钮
+
+    // Set focus to confirm button
     confirmButton->setFocus();
 }
 
 void ConfirmDialog::centerDialog()
 {
     if (parentWidget()) {
-        // 相对于父窗口居中
+        
         QPoint parentCenter = parentWidget()->mapToGlobal(parentWidget()->rect().center());
         move(parentCenter.x() - width() / 2, parentCenter.y() - height() / 2);
     } else {
-        // 相对于屏幕居中
+        
         QScreen* screen = QApplication::primaryScreen();
         if (screen) {
             QRect screenGeometry = screen->availableGeometry();
@@ -197,13 +202,13 @@ void ConfirmDialog::centerDialog()
 void ConfirmDialog::onConfirmClicked()
 {
     userConfirmed = true;
-    accept(); // 关闭对话框并返回Accepted结果
+    accept(); 
 }
 
 void ConfirmDialog::onCancelClicked()
 {
     userConfirmed = false;
-    reject(); // 关闭对话框并返回Rejected结果
+    reject(); 
 }
 
 void ConfirmDialog::keyPressEvent(QKeyEvent* event)
@@ -211,15 +216,15 @@ void ConfirmDialog::keyPressEvent(QKeyEvent* event)
     switch (event->key()) {
         case Qt::Key_Return:
         case Qt::Key_Enter:
-            // 回车键确认
+            
             onConfirmClicked();
             break;
         case Qt::Key_Escape:
-            // ESC键取消
+            
             onCancelClicked();
             break;
         default:
-            // 其他键传递给父类处理
+            
             QDialog::keyPressEvent(event);
             break;
     }

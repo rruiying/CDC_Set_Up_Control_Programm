@@ -1,6 +1,6 @@
-// src/data/src/export_manager.cpp
 #include "../include/export_manager.h"
 #include "../../utils/include/logger.h"
+#include "../include/file_manager.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -13,7 +13,6 @@ ExportManager::ExportManager() {
     // 初始化写缓冲区
     writeBuffer = std::make_unique<char[]>(writeBufferSize);
     
-    // 添加默认模板
     ExportTemplate csvTemplate;
     csvTemplate.name = "Standard CSV";
     csvTemplate.description = "Standard CSV format with all fields";
@@ -41,7 +40,6 @@ bool ExportManager::exportData(const std::vector<MeasurementData>& data,
     bool success = false;
     
     try {
-        // 根据格式选择导出方法
         switch (options.format) {
             case ExportFormat::CSV:
                 success = exportCSV(data, filename, options);
@@ -80,7 +78,8 @@ bool ExportManager::exportData(const std::vector<MeasurementData>& data,
         
         if (success) {
             lastExportStats.exportedRecords = data.size();
-            lastExportStats.fileSize = getFileSize(filename);
+            FileManager fm;
+            lastExportStats.fileSize = fm.getFileSize(filename);
             lastExportStats.exportDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - startTime).count();
             
@@ -271,8 +270,14 @@ std::string ExportManager::generateFilename(const ExportOptions& options) const 
     
     if (options.appendTimestamp) {
         auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        oss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+        auto tt  = std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+    #ifdef _WIN32
+        localtime_s(&tm, &tt);
+    #else
+        localtime_r(&tt, &tm);
+    #endif
+        oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
     }
     
     // 添加扩展名
@@ -326,11 +331,13 @@ std::vector<std::string> ExportManager::getSupportedExtensions() const {
 }
 
 void ExportManager::setProgressCallback(ProgressCallback callback) {
-    progressCallback = callback;
+    std::lock_guard<std::mutex> lock(mutex);
+    progressCallback = std::move(callback);
 }
 
 void ExportManager::setCompletionCallback(CompletionCallback callback) {
-    completionCallback = callback;
+    std::lock_guard<std::mutex> lock(mutex);
+    completionCallback = std::move(callback);
 }
 
 std::string ExportManager::getLastError() const {
@@ -360,6 +367,9 @@ ExportOptions ExportManager::getDefaultOptions() const {
 bool ExportManager::exportCSV(const std::vector<MeasurementData>& data,
                              const std::string& filename,
                              const ExportOptions& options) {
+    if (!writeBuffer) {
+        writeBuffer = std::make_unique<char[]>(writeBufferSize);
+    }
     std::ofstream file;
     
     if (options.useBuffering) {
@@ -492,9 +502,15 @@ std::string ExportManager::formatValue(double value, int decimalPlaces) const {
 std::string ExportManager::formatTimestamp(int64_t timestamp, const std::string& format) const {
     auto seconds = timestamp / 1000;
     std::time_t time = static_cast<std::time_t>(seconds);
-    
+    std::tm tm{};
+    #ifdef _WIN32
+    localtime_s(&tm, &time);
+    #else
+    localtime_r(&time, &tm);
+    #endif
+
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&time), format.c_str());
+    oss << std::put_time(&tm, format.c_str());
     return oss.str();
 }
 
@@ -630,16 +646,16 @@ std::string ExportManager::measurementToJSON(const MeasurementData& data, const 
 }
 
 void ExportManager::notifyProgress(int current, int total) {
-    if (progressCallback && total > 0) {
-        int percentage = (current * 100) / total;
-        progressCallback(percentage);
-    }
+    if (total <= 0) return;
+    ProgressCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = progressCallback; }
+    if (cb) cb((current * 100) / total);
 }
 
 void ExportManager::notifyCompletion(const ExportStatistics& stats) {
-    if (completionCallback) {
-        completionCallback(stats);
-    }
+    CompletionCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = completionCallback; }
+    if (cb) cb(stats);
 }
 
 void ExportManager::setError(const std::string& error) {
@@ -652,12 +668,4 @@ bool ExportManager::compressFile(const std::string& filename) {
     // 压缩功能需要zlib或类似库的支持
     LOG_WARNING("File compression not implemented");
     return true;
-}
-
-size_t ExportManager::getFileSize(const std::string& filename) const {
-    try {
-        return std::filesystem::file_size(filename);
-    } catch (...) {
-        return 0;
-    }
 }

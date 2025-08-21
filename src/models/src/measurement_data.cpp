@@ -1,5 +1,6 @@
-// src/models/src/measurement_data.cpp
 #include "../include/measurement_data.h"
+#include "../../utils/include/time_utils.h"
+#include "../include/physics_calculator.h"
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -7,19 +8,19 @@
 #include <ctime>
 
 MeasurementData::MeasurementData() 
-    : timestamp(getCurrentTimestamp()),
+    : timestamp(TimeUtils::getCurrentTimestamp()),
       m_setHeight(0.0),
       m_setAngle(0.0),
       theoreticalCapacitance(0.0) {
-    calculateTheoreticalCapacitance();
+    theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(plateArea, m_setHeight, m_setAngle, dielectricConstant);
 }
 
 MeasurementData::MeasurementData(double height, double angle, const SensorData& sensorData)
-    : timestamp(getCurrentTimestamp()),
+    : timestamp(TimeUtils::getCurrentTimestamp()),
       m_setHeight(height),
       m_setAngle(angle),
       sensorData(sensorData) {
-    calculateTheoreticalCapacitance();
+    theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(plateArea, m_setHeight, m_setAngle, dielectricConstant);
 }
 
 MeasurementData::MeasurementData(const MeasurementData& other) {
@@ -50,7 +51,8 @@ double MeasurementData::getCapacitanceDifference() const {
 bool MeasurementData::setHeight(double height) {
     if (isInSafetyRange(height, m_setAngle)) {
         m_setHeight = height;
-        calculateTheoreticalCapacitance();
+        theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(
+    plateArea, height, m_setAngle, dielectricConstant);
         return true;
     }
     return false;
@@ -59,10 +61,23 @@ bool MeasurementData::setHeight(double height) {
 bool MeasurementData::setAngle(double angle) {
     if (isInSafetyRange(m_setHeight, angle)) {
         m_setAngle = angle;
-        calculateTheoreticalCapacitance();
+        theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(
+    plateArea, m_setHeight, angle, dielectricConstant);
         return true;
     }
     return false;
+}
+
+void MeasurementData::setPlateArea(double area) {
+    plateArea = area; 
+    theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(
+        plateArea, m_setHeight, m_setAngle, dielectricConstant);
+}
+
+void MeasurementData::setDielectricConstant(double epsilon) { 
+    dielectricConstant = epsilon; 
+    theoreticalCapacitance = PhysicsCalculator::calculateParallelPlateCapacitance(
+        plateArea, m_setHeight, m_setAngle, dielectricConstant);
 }
 
 void MeasurementData::updateSensorData(const SensorData& data) {
@@ -83,22 +98,7 @@ bool MeasurementData::isValid() const {
 }
 
 std::string MeasurementData::getFormattedTime() const {
-    return formatTimestamp(timestamp);
-}
-
-std::string MeasurementData::formatTimestamp(int64_t ts) const {
-    // 将毫秒时间戳转换为秒
-    std::time_t seconds = ts / 1000;
-    int milliseconds = ts % 1000;
-    
-    // 转换为本地时间
-    std::tm* tm = std::localtime(&seconds);
-    
-    std::ostringstream oss;
-    oss << std::put_time(tm, "%Y-%m-%d %H:%M:%S");
-    oss << "." << std::setfill('0') << std::setw(3) << milliseconds;
-    
-    return oss.str();
+    return TimeUtils::formatTimestamp(timestamp);
 }
 
 std::string MeasurementData::toCSV() const {
@@ -106,8 +106,8 @@ std::string MeasurementData::toCSV() const {
     oss << std::fixed << std::setprecision(2);
     
     // 时间戳
-    oss << formatTimestamp(timestamp) << ",";
-    
+    oss << TimeUtils::formatTimestamp(timestamp) << ",";
+
     // 设定值
     oss << m_setHeight << ",";
     oss << m_setAngle << ",";
@@ -146,39 +146,12 @@ std::string MeasurementData::getCSVHeader() {
 std::string MeasurementData::toLogString() const {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2);
-    oss << "Timestamp: " << formatTimestamp(timestamp) << "\n";
+    oss << "Timestamp: " << TimeUtils::formatTimestamp(timestamp) << "\n";
     oss << "Set Values: Height=" << m_setHeight << "mm, Angle=" << m_setAngle << "°\n";
     oss << "Theoretical Capacitance: " << theoreticalCapacitance << "pF\n";
     oss << "Sensor Data: " << sensorData.toString() << "\n";
     oss << "Capacitance Difference: " << getCapacitanceDifference() << "pF";
     return oss.str();
-}
-
-void MeasurementData::calculateTheoreticalCapacitance() {
-    if (m_setHeight <= 0) {
-        theoreticalCapacitance = 0.0;
-        return;
-    }
-    
-    // 将高度从mm转换为m
-    double distanceInMeters = m_setHeight / 1000.0;
-    
-    // 计算有效面积（考虑倾斜角度）
-    double angleInRadians = m_setAngle * M_PI / 180.0;
-    double effectiveArea = plateArea * std::cos(angleInRadians);
-    
-    // C = ε₀ * εᵣ * A / d
-    double capacitanceInFarads = EPSILON_0 * dielectricConstant * effectiveArea / distanceInMeters;
-    
-    // 转换为pF
-    theoreticalCapacitance = capacitanceInFarads * 1e12;
-}
-
-int64_t MeasurementData::getCurrentTimestamp() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto duration = now.time_since_epoch();
-    return duration_cast<milliseconds>(duration).count();
 }
 
 bool MeasurementData::isInSafetyRange(double height, double angle) const {

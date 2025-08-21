@@ -1,6 +1,3 @@
-# src/hardware/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
 set(HARDWARE_HEADERS
     include/command_protocol.h
     include/sensor_interface.h
@@ -22,11 +19,16 @@ target_include_directories(hardware_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(hardware_lib PUBLIC
-    Qt6::Core
-    Qt6::SerialPort
-    models_lib
-    utils_lib
+target_link_libraries(hardware_lib
+    PUBLIC
+        models_lib
+        utils_lib
 )
 
-set_target_properties(hardware_lib PROPERTIES AUTOMOC ON)
+# Windows需要的系统库
+if(WIN32)
+    target_link_libraries(hardware_lib PRIVATE setupapi)
+endif()
+
+# 不需要AUTOMOC
+target_compile_features(hardware_lib PUBLIC cxx_std_17)

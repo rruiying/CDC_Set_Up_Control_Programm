@@ -2,6 +2,8 @@
 #include "../include/serial_interface.h"
 #include "../include/command_protocol.h"
 #include "../../utils/include/logger.h"
+#include "../../models/include/physics_constants.h"
+#include <cmath>
 
 SensorInterface::SensorInterface(std::shared_ptr<SerialInterface> serial)
     : m_serial(serial) {
@@ -25,28 +27,28 @@ bool SensorInterface::requestDistanceSensors() {
     if (!m_serial || !m_serial->isOpen()) {
         return false;
     }
-    return m_serial->sendCommand("READ:DIST\r\n");
+    return m_serial->sendCommand(CommandProtocol::buildCustomCommand("READ", "DIST"));
 }
 
 bool SensorInterface::requestAngleSensor() {
     if (!m_serial || !m_serial->isOpen()) {
         return false;
     }
-    return m_serial->sendCommand("READ:ANGLE\r\n");
+    return m_serial->sendCommand(CommandProtocol::buildCustomCommand("READ", "ANGLE"));
 }
 
 bool SensorInterface::requestTemperature() {
     if (!m_serial || !m_serial->isOpen()) {
         return false;
     }
-    return m_serial->sendCommand("READ:TEMP\r\n");
+    return m_serial->sendCommand(CommandProtocol::buildCustomCommand("READ", "TEMP"));
 }
 
 bool SensorInterface::requestCapacitance() {
     if (!m_serial || !m_serial->isOpen()) {
         return false;
     }
-    return m_serial->sendCommand("READ:CAP\r\n");
+    return m_serial->sendCommand(CommandProtocol::buildCustomCommand("READ", "CAP"));
 }
 
 void SensorInterface::startPolling(int intervalMs) {
@@ -86,22 +88,28 @@ void SensorInterface::pollThread() {
     }
 }
 
-void SensorInterface::processData(const std::string& data) {
-    std::lock_guard<std::mutex> lock(dataMutex);
-    
+void SensorInterface::processData(const std::string& data) {  
     CommandResponse response = CommandProtocol::parseResponse(data);
     
-    if (response.type == ResponseType::SENSOR_DATA && response.sensorData.has_value()) {
-        m_latestData = response.sensorData.value();
-        
-        if (validateSensorData(m_latestData)) {
-            if (dataCallback) {
-                dataCallback(m_latestData);
-            }
-        } else {
-            if (errorCallback) {
-                errorCallback("Sensor data validation failed");
-            }
+    if (response.type != ResponseType::SENSOR_DATA || 
+        !response.sensorData.has_value()) {
+        return;
+    }
+    
+    SensorData sensorDataCopy = response.sensorData.value();
+    
+    {
+        std::lock_guard<std::mutex> lock(dataMutex);
+        m_latestData = sensorDataCopy;
+    }
+    
+    if (validateSensorData(sensorDataCopy)) {
+        if (dataCallback) {
+            dataCallback(sensorDataCopy);
+        }
+    } else {
+        if (errorCallback) {
+            errorCallback("Sensor data validation failed");
         }
     }
 }
@@ -112,21 +120,31 @@ SensorData SensorInterface::getLatestData() const {
 }
 
 void SensorInterface::setDataCallback(DataCallback callback) {
-    dataCallback = callback;
+    std::lock_guard<std::mutex> lock(dataMutex);
+    dataCallback = std::move(callback);
 }
 
 void SensorInterface::setErrorCallback(ErrorCallback callback) {
-    errorCallback = callback;
+    std::lock_guard<std::mutex> lock(dataMutex);
+    errorCallback = std::move(callback);
 }
 
 bool SensorInterface::validateSensorData(const SensorData& data) {
-    if (data.distanceUpper1 < 0 || data.distanceUpper1 > 300) {
+    if (data.distanceUpper1 < PhysicsConstants::DISTANCE_SENSOR_MIN || 
+        data.distanceUpper1 > PhysicsConstants::DISTANCE_SENSOR_MAX) {
         return false;
     }
     
-    if (data.temperature < -40 || data.temperature > 100) {
+    if (data.temperature < PhysicsConstants::TEMPERATURE_MIN || 
+        data.temperature > PhysicsConstants::TEMPERATURE_MAX) {
         return false;
     }
     
+    auto finite = [](double v){ return std::isfinite(v); };
+    if (!finite(data.distanceUpper1) || !finite(data.distanceUpper2) || 
+        !finite(data.temperature) || !finite(data.angle) ||
+        !finite(data.capacitance)) {
+        return false;
+    }
     return true;
 }

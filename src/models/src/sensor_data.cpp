@@ -1,32 +1,44 @@
-// src/models/src/sensor_data.cpp
 #include "../include/sensor_data.h"
+#include "../include/system_config.h"
+#include "../../utils/include/time_utils.h"
+#include "../include/physics_constants.h"
+#include "../../utils/include/math_utils.h"
 #include <sstream>
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
-
-// 定义传感器范围常量
-namespace {
-    const double DISTANCE_SENSOR_MIN = 0.0;
-    const double DISTANCE_SENSOR_MAX = 300.0;
-    const double TEMPERATURE_MIN = -40.0;
-    const double TEMPERATURE_MAX = 85.0;
-    const double ANGLE_MIN = -90.0;
-    const double ANGLE_MAX = 90.0;
-    const double CAPACITANCE_MIN = 0.0;
-    const double CAPACITANCE_MAX = 1000.0;
-}
+#include <chrono>
+#include <ctime>
 
 SensorData::SensorData() 
     : distanceUpper1(0.0), distanceUpper2(0.0),
       distanceLower1(0.0), distanceLower2(0.0),
       temperature(0.0), angle(0.0),
-      capacitance(0.0) {
-    reset();
+      capacitance(0.0),
+      timestamp(TimeUtils::getCurrentTimestamp()) {
+    const auto& config = SystemConfig::getInstance();
+
+    
+    // 初始化有效性标志
+    isValid.distanceUpper1 = false;
+    isValid.distanceUpper2 = false;
+    isValid.distanceLower1 = false;
+    isValid.distanceLower2 = false;
+    isValid.temperature = false;
+    isValid.angle = false;
+    isValid.capacitance = false;
 }
 
-SensorData::SensorData(const SensorData& other) {
-    *this = other;
+SensorData::SensorData(const SensorData& other)
+:   distanceUpper1(other.distanceUpper1),
+    distanceUpper2(other.distanceUpper2),
+    distanceLower1(other.distanceLower1),
+    distanceLower2(other.distanceLower2),
+    temperature(other.temperature),
+    angle(other.angle),
+    capacitance(other.capacitance),
+    timestamp(other.timestamp),
+    isValid(other.isValid){
 }
 
 SensorData& SensorData::operator=(const SensorData& other) {
@@ -40,9 +52,6 @@ SensorData& SensorData::operator=(const SensorData& other) {
         capacitance = other.capacitance;
         timestamp = other.timestamp;
         isValid = other.isValid;
-        systemHeight = other.systemHeight;
-        middlePlateHeight = other.middlePlateHeight;
-        sensorSpacing = other.sensorSpacing;
     }
     return *this;
 }
@@ -55,6 +64,7 @@ void SensorData::reset() {
     temperature = 0.0;
     angle = 0.0;
     capacitance = 0.0;
+    timestamp = TimeUtils::getCurrentTimestamp();
     
     isValid.distanceUpper1 = false;
     isValid.distanceUpper2 = false;
@@ -77,9 +87,13 @@ double SensorData::getAverageHeight() const {
 }
 
 double SensorData::getCalculatedAngle() const {
-    if (isValid.distanceUpper1 && isValid.distanceUpper2 && sensorSpacing > 0) {
-        double heightDiff = distanceUpper2 - distanceUpper1;
-        return std::atan(heightDiff / sensorSpacing) * 180.0 / M_PI;
+    if (isValid.distanceUpper1 && isValid.distanceUpper2) {
+        double spacing = SystemConfig::getInstance().getSensorSpacing();
+        if (spacing > 0) {
+            double heightDiff = distanceUpper2 - distanceUpper1;
+            double rad = std::atan(heightDiff / spacing);
+            return rad * PhysicsConstants::RAD_TO_DEG;
+        }
     }
     return 0.0;
 }
@@ -96,12 +110,14 @@ double SensorData::getAverageGroundDistance() const {
 }
 
 double SensorData::getCalculatedUpperDistance() const {
-    return systemHeight - getAverageGroundDistance() - middlePlateHeight - getAverageHeight();
+    const auto& config = SystemConfig::getInstance();
+    return config.getTotalHeight() - getAverageGroundDistance() - 
+           config.getMiddlePlateHeight() - getAverageHeight();
 }
 
 bool SensorData::setUpperSensors(double sensor1, double sensor2) {
-    if (isInRange(sensor1, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX) &&
-        isInRange(sensor2, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX)) {
+    if (MathUtils::isInRange(sensor1, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX) &&
+        MathUtils::isInRange(sensor2, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX)) {
         distanceUpper1 = sensor1;
         distanceUpper2 = sensor2;
         isValid.distanceUpper1 = true;
@@ -112,8 +128,8 @@ bool SensorData::setUpperSensors(double sensor1, double sensor2) {
 }
 
 bool SensorData::setLowerSensors(double sensor1, double sensor2) {
-    if (isInRange(sensor1, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX) &&
-        isInRange(sensor2, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX)) {
+    if (MathUtils::isInRange(sensor1, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX) &&
+        MathUtils::isInRange(sensor2, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX)) {
         distanceLower1 = sensor1;
         distanceLower2 = sensor2;
         isValid.distanceLower1 = true;
@@ -124,7 +140,7 @@ bool SensorData::setLowerSensors(double sensor1, double sensor2) {
 }
 
 bool SensorData::setTemperature(double temp) {
-    if (isInRange(temp, TEMPERATURE_MIN, TEMPERATURE_MAX)) {
+    if (MathUtils::isInRange(temp, PhysicsConstants::TEMPERATURE_MIN, PhysicsConstants::TEMPERATURE_MAX)) {
         temperature = temp;
         isValid.temperature = true;
         return true;
@@ -133,7 +149,7 @@ bool SensorData::setTemperature(double temp) {
 }
 
 bool SensorData::setAngle(double a) {
-    if (isInRange(a, ANGLE_MIN, ANGLE_MAX)) {
+    if (MathUtils::isInRange(a, PhysicsConstants::ANGLE_MIN, PhysicsConstants::ANGLE_MAX)) {
         angle = a;
         isValid.angle = true;
         return true;
@@ -142,7 +158,7 @@ bool SensorData::setAngle(double a) {
 }
 
 bool SensorData::setCapacitance(double cap) {
-    if (isInRange(cap, CAPACITANCE_MIN, CAPACITANCE_MAX)) {
+    if (MathUtils::isInRange(cap, PhysicsConstants::CAPACITANCE_MIN, PhysicsConstants::CAPACITANCE_MAX)) {
         capacitance = cap;
         isValid.capacitance = true;
         return true;
@@ -209,20 +225,12 @@ std::string SensorData::toString() const {
     return oss.str();
 }
 
-QString SensorData::toQString() const {
-    return QString::fromStdString(toString());
-}
-
 std::string SensorData::toCSV() const {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2);
     
     // 时间戳
-    if (timestamp.isValid()) {
-        oss << timestamp.toString("yyyy-MM-dd HH:mm:ss.zzz").toStdString() << ",";
-    } else {
-        oss << ",";
-    }
+    oss << TimeUtils::formatTimestamp(timestamp) << ",";
     
     // 原始数据
     oss << distanceUpper1 << ",";
@@ -247,10 +255,6 @@ std::string SensorData::getCSVHeader() {
            "Temperature(C),Measured_Angle(deg),Measured_Capacitance(pF),"
            "Average_Height(mm),Calculated_Angle(deg),Average_Ground_Distance(mm),"
            "Calculated_Upper_Distance(mm)";
-}
-
-bool SensorData::isInRange(double value, double min, double max) const {
-    return value >= min && value <= max;
 }
 
 std::vector<double> SensorData::parseNumbers(const std::string& str) const {

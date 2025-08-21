@@ -1,4 +1,3 @@
-// src/models/src/system_config.cpp
 #include "../include/system_config.h"
 #include <fstream>
 #include <sstream>
@@ -86,13 +85,7 @@ bool SystemConfig::loadFromFile(const std::string& filename) {
         if (std::regex_search(content, match, spacingRegex)) {
             sensorSpacing = std::stod(match[1]);
         }
-        
-        // 解析电机速度
-        std::regex speedRegex("\"defaultSpeed\"\\s*:\\s*\"([^\"]+)\"");
-        if (std::regex_search(content, match, speedRegex)) {
-            setMotorSpeedFromString(match[1]);
-        }
-        
+
         // 解析原点位置
         std::regex homeHeightRegex(R"("homePosition"[^}]*"height"\s*:\s*([0-9.+-]+))");
         std::regex homeAngleRegex(R"("homePosition"[^}]*"angle"\s*:\s*([0-9.+-]+))");
@@ -174,7 +167,6 @@ bool SystemConfig::saveToFile(const std::string& filename) const {
     
     // 电机控制
     file << "    \"motorControl\": {\n";
-    file << "        \"defaultSpeed\": \"" << getMotorSpeedString() << "\",\n";
     file << "        \"homePosition\": {\n";
     file << "            \"height\": " << homeHeight << ",\n";
     file << "            \"angle\": " << homeAngle << "\n";
@@ -236,7 +228,7 @@ void SystemConfig::setAngleLimits(double minA, double maxA) {
 }
 
 bool SystemConfig::setPlateArea(double area) {
-    if (area <= 0) {
+    if (area <= 0 || area > 1000000) {
         return false;
     }
     
@@ -265,36 +257,6 @@ void SystemConfig::setSystemDimensions(double total, double middle, double spaci
     notifyChange();
 }
 
-void SystemConfig::setMotorSpeed(MotorSpeed speed) {
-    std::lock_guard<std::mutex> lock(mutex);
-    motorSpeed = speed;
-    notifyChange();
-}
-
-std::string SystemConfig::getMotorSpeedString() const {
-    switch (motorSpeed) {
-        case MotorSpeed::SLOW:   return "Slow";
-        case MotorSpeed::MEDIUM: return "Medium";
-        case MotorSpeed::FAST:   return "Fast";
-        default:                 return "Medium";
-    }
-}
-
-void SystemConfig::setMotorSpeedFromString(const std::string& speedStr) {
-    std::lock_guard<std::mutex> lock(mutex);
-    
-    if (speedStr == "Slow") {
-        motorSpeed = MotorSpeed::SLOW;
-        notifyChange();
-    } else if (speedStr == "Medium") {
-        motorSpeed = MotorSpeed::MEDIUM;
-        notifyChange();
-    } else if (speedStr == "Fast") {
-        motorSpeed = MotorSpeed::FAST;
-        notifyChange();
-    }
-    // 无效字符串不改变当前值
-}
 
 void SystemConfig::setHomePosition(double height, double angle) {
     std::lock_guard<std::mutex> lock(mutex);
@@ -332,18 +294,17 @@ void SystemConfig::reset() {
     
     // 重置到新的默认值（符合第二页需求）
     minHeight = 0.0;
-    maxHeight = 180.0;        // 改为180mm
+    maxHeight = 150.0;        // mm
     minAngle = -90.0;
     maxAngle = 90.0;
     
     plateArea = 2500.0;       // mm² (50mm x 50mm)
     dielectricConstant = 1.0;
     
-    totalHeight = 180.0;      // mm
+    totalHeight = 150.0;      // mm
     middlePlateHeight = 25.0; // mm
     sensorSpacing = 80.0;     // mm
     
-    motorSpeed = MotorSpeed::MEDIUM;
     homeHeight = 0.0;         // mm，改为0
     homeAngle = 0.0;          // degrees
     
@@ -367,7 +328,7 @@ std::string SystemConfig::getConfigSummary() const {
     oss << "Angle[" << minAngle << "-" << maxAngle << "]°\n";
     oss << "  Capacitor: Area=" << plateArea << "m², ε_r=" << dielectricConstant << "\n";
     oss << "  System: Height=" << totalHeight << "mm, MiddlePlate=" << middlePlateHeight << "mm\n";
-    oss << "  Motor: Speed=" << getMotorSpeedString() << ", Home=[" << homeHeight << "mm, " << homeAngle << "°]\n";
+    oss << "  Motor: Home=[" << homeHeight << "mm, " << homeAngle << "°]\n";
     oss << "  Communication: BaudRate=" << defaultBaudRate << ", Timeout=" << communicationTimeout << "ms\n";
     oss << "  Data Recording: UpdateInterval=" << sensorUpdateInterval << "ms, MaxRecords=" << maxRecords;
     
@@ -375,9 +336,12 @@ std::string SystemConfig::getConfigSummary() const {
 }
 
 void SystemConfig::notifyChange() {
-/*     if (changeCallback) {
-        changeCallback();
-    } */
+    ConfigChangeCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        cb = changeCallback;
+    }
+    if (cb) cb();
 }
 
 bool SystemConfig::validateSafetyLimits(double minH, double maxH, double minA, double maxA) const {

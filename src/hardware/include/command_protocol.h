@@ -1,4 +1,3 @@
-// src/hardware/include/command_protocol.h
 #ifndef COMMAND_PROTOCOL_H
 #define COMMAND_PROTOCOL_H
 
@@ -7,9 +6,6 @@
 #include <optional>
 #include "../../models/include/sensor_data.h"
 
-/**
- * @brief 响应类型枚举
- */
 enum class ResponseType {
     OK,           // 成功响应
     ERROR,        // 错误响应
@@ -18,9 +14,7 @@ enum class ResponseType {
     UNKNOWN       // 未知响应
 };
 
-/**
- * @brief 错误代码枚举
- */
+
 enum class ErrorCode {
     NONE = 0,
     OUT_OF_RANGE,
@@ -32,28 +26,27 @@ enum class ErrorCode {
     UNKNOWN
 };
 
-/**
- * @brief 命令响应结构
- */
+
 struct CommandResponse {
     ResponseType type = ResponseType::UNKNOWN;
     bool success = false;
     std::string data;
     std::string errorMessage;
-    std::optional<SensorData> sensorData;
+    std::optional<SensorData> sensorData; 
     
     CommandResponse() = default;
 };
 
-/**
- * @brief 通信协议类
- * 
- * 定义与MCU通信的协议格式：
- * - 命令格式：COMMAND[:PARAMS]\r\n
- * - 响应格式：TYPE[:DATA]\r\n
- */
+
 class CommandProtocol {
 public:
+    static constexpr const char* kEOL = "\r\n";
+    static std::string buildReadCommand(std::string_view what) {
+        std::string cmd = "READ:";
+        cmd.append(what);
+        cmd.append(kEOL);
+        return cmd;
+    }
     // 命令构建方法
     static std::string buildSetHeightCommand(double height);
     static std::string buildSetAngleCommand(double angle);
