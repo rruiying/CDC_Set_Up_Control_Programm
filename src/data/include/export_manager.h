@@ -10,9 +10,6 @@
 #include <mutex>
 #include "../../models/include/measurement_data.h"
 
-/**
- * @brief 导出格式枚举
- */
 enum class ExportFormat {
     CSV,
     EXCEL,
@@ -23,9 +20,6 @@ enum class ExportFormat {
     CUSTOM
 };
 
-/**
- * @brief 导出选项结构
- */
 struct ExportOptions {
     ExportFormat format = ExportFormat::CSV;
     
@@ -58,9 +52,6 @@ struct ExportOptions {
     bool appendTimestamp = true;
 };
 
-/**
- * @brief 导出模板
- */
 struct ExportTemplate {
     std::string name;
     std::string description;
@@ -68,61 +59,35 @@ struct ExportTemplate {
     std::vector<std::string> customFields;
 };
 
-/**
- * @brief 导出统计信息
- */
 struct ExportStatistics {
     int totalRecords = 0;
     int exportedRecords = 0;
-    int64_t exportDuration = 0; // 毫秒
+    int64_t exportDuration = 0;
     size_t fileSize = 0;
     std::string filename;
 };
 
-/**
- * @brief 导出管理器类
- * 
- * 提供高级的数据导出功能：
- * - 多种格式支持
- * - 灵活的字段选择
- * - 批量导出
- * - 模板管理
- * - 进度回调
- * - 错误处理
- */
 class ExportManager {
 public:
-    /**
-     * @brief 构造函数
-     */
     ExportManager();
-    
-    /**
-     * @brief 析构函数
-     */
     ~ExportManager();
     
-    // 回调函数类型
     using ProgressCallback = std::function<void(int percentage)>;
     using CompletionCallback = std::function<void(const ExportStatistics& stats)>;
     
-    // 基本导出方法
     bool exportData(const std::vector<MeasurementData>& data,
                    const std::string& filename,
                    const ExportOptions& options = ExportOptions());
     
-    // 过滤导出
     bool exportFiltered(const std::vector<MeasurementData>& data,
                        const std::string& filename,
                        const ExportOptions& options,
                        std::function<bool(const MeasurementData&)> filter);
     
-    // 批量导出
     bool batchExport(const std::vector<MeasurementData>& data,
                     const std::vector<std::string>& filenames,
                     const std::vector<ExportOptions>& options);
     
-    // 模板管理
     void addTemplate(const ExportTemplate& template_);
     void removeTemplate(const std::string& name);
     std::vector<ExportTemplate> getTemplates() const;
@@ -130,31 +95,24 @@ public:
                            const std::string& filename,
                            const std::string& templateName);
     
-    // 统计导出
     bool exportStatistics(const std::vector<MeasurementData>& data,
                          const std::string& filename);
     
-    // 自定义导出
     bool exportCustom(const std::vector<MeasurementData>& data,
                      const std::string& filename,
                      std::function<std::string(const MeasurementData&)> formatter);
     
-    // 文件名生成
     std::string generateFilename(const ExportOptions& options) const;
     
-    // 格式支持查询
     bool isFormatSupported(ExportFormat format) const;
     std::vector<std::string> getSupportedExtensions() const;
     
-    // 回调设置
     void setProgressCallback(ProgressCallback callback);
     void setCompletionCallback(CompletionCallback callback);
     
-    // 错误处理
     std::string getLastError() const;
     void clearError();
     
-    // 导出统计
     ExportStatistics getLastExportStatistics() const;
     
     // 配置

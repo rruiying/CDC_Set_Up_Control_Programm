@@ -29,6 +29,15 @@ struct DeviceInfoData {
     std::string lastError;
 };
 
+enum class SystemStatus {
+    READY,
+    MOVING,
+    ERROR,
+    HOMING,
+    EMERGENCY_STOP,
+    DISCONNECTED
+};
+
 class ApplicationController {
 public:
     ApplicationController();
@@ -54,6 +63,10 @@ public:
     DeviceInfoData getCurrentDevice() const;
     bool isPortInUse(const std::string& port) const;
     std::vector<std::string> getAvailablePorts() const;
+    bool updateSensorData();
+    std::string sendAndReceiveCommand(const std::string& command, int timeoutMs);
+
+    bool isEmergencyStopped() const;
 
     bool setTargetHeight(double height);
     bool setTargetAngle(double angle);
@@ -74,6 +87,8 @@ public:
     double getMinHeight() const;
     double getMaxAngle() const;
     double getMinAngle() const;
+    SystemStatus getSystemStatus() const;
+    bool isRecording() const;
     
     // ===== 传感器监控API =====
     bool startSensorMonitoring();

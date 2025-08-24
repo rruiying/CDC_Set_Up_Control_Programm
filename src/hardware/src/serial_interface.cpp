@@ -1,4 +1,3 @@
-// src/hardware/src/serial_interface.cpp
 #include "../include/serial_interface.h"
 #include "../../utils/include/logger.h"
 #include <chrono>
@@ -7,7 +6,6 @@
 #include <thread>
 #include <queue>
 
-// 平台相关头文件
 #ifdef _WIN32
     #include <windows.h>
     #include <setupapi.h>
@@ -291,7 +289,77 @@ std::string SerialInterface::sendAndReceive(const std::string& command, int time
         return "";
     }
     
-    return readLine(timeoutMs);
+    std::string fullResponse;
+    auto startTime = std::chrono::steady_clock::now();
+    
+    while (true) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        if (elapsed >= timeoutMs) {
+            Logger::getInstance().warning("Timeout waiting for complete response");
+            break;
+        }
+        
+        int available = bytesAvailable();
+        if (available > 0) {
+            std::vector<uint8_t> bytes = readBytes(available, 100);
+            if (!bytes.empty()) {
+                std::string chunk(bytes.begin(), bytes.end());
+                fullResponse += chunk;
+                
+                Logger::getInstance().error("!!! " + std::to_string(bytes.size()) + " bytes available !!!");
+                Logger::getInstance().error("!!! RAW DATA: [" + chunk + "] !!!");
+                
+                std::string hex;
+                for (uint8_t b : bytes) {
+                    char buf[8];
+                    sprintf(buf, "%02X ", b);
+                    hex += buf;
+                }
+                Logger::getInstance().error("!!! HEX: " + hex + " !!!");
+            }
+        }
+        
+        if (fullResponse.find("SENSORS:") != std::string::npos) {
+            size_t lastSensors = fullResponse.rfind("SENSORS:");
+            if (lastSensors != std::string::npos) {
+                size_t endLine = fullResponse.find('\n', lastSensors);
+                if (endLine != std::string::npos) {
+                    std::string sensorLine = fullResponse.substr(
+                        lastSensors, endLine - lastSensors);
+                    
+                    int commaCount = std::count(
+                        sensorLine.begin(), sensorLine.end(), ',');
+                    if (commaCount == 6) {
+                        Logger::getInstance().info("Complete SENSORS response received: " + sensorLine);
+                        break;
+                    }
+                }
+            }
+        }
+        else if (fullResponse.find("OK\r\n") != std::string::npos ||
+                 fullResponse.find("OK\n") != std::string::npos) {
+            break;
+        }
+        else if (fullResponse.find("ERROR:") != std::string::npos) {
+            size_t errorPos = fullResponse.find("ERROR:");
+            size_t endLine = fullResponse.find('\n', errorPos);
+            if (endLine != std::string::npos) {
+                break;
+            }
+        }
+        else if (fullResponse.find("STATUS:") != std::string::npos) {
+            size_t statusPos = fullResponse.find("STATUS:");
+            size_t endLine = fullResponse.find('\n', statusPos);
+            if (endLine != std::string::npos) {
+                break;
+            }
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    return fullResponse;
 }
 
 void SerialInterface::flushBuffers() {

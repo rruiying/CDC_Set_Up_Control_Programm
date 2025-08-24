@@ -2,8 +2,7 @@
 #include <QObject>
 #include <memory>
 
-// 前向声明
-class ApplicationController;  // 添加这个
+class ApplicationController;
 class SerialInterface;
 class SensorInterface;
 class MotorController;
@@ -49,28 +48,23 @@ private slots:
     void onCriticalError(const QString& error);
     
 private:
-    // 硬件层
     std::shared_ptr<SerialInterface> m_serialInterface;
     std::unique_ptr<SensorInterface> m_sensorInterface;
     
-    // 核心层
     std::shared_ptr<MotorController> m_motorController;
     std::shared_ptr<SensorManager> m_sensorManager;
     std::shared_ptr<SafetyManager> m_safetyManager;
     std::shared_ptr<DataRecorder> m_dataRecorder;
     
-    // 数据层
     std::unique_ptr<DataProcessor> m_dataProcessor;
     std::shared_ptr<ExportManager> m_exportManager;
     std::unique_ptr<FileManager> m_fileManager;
     
-    // UI和控制器
     std::unique_ptr<MainWindow> m_mainWindow;
     std::unique_ptr<ApplicationController> m_controller;
     
     bool m_isRunning;
     
-    // 内部方法
     bool initializeHardware();
     bool initializeCore();
     bool initializeData();

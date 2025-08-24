@@ -430,12 +430,15 @@ void MainWindow::onHomePositionClicked() {
         
         ui->doubleSpinBox->setValue(0.0);
         ui->doubleSpinBox_2->setValue(0.0);
+
+        ui->pushButton_8->setStyleSheet("");
         
         updateTheoreticalCapacitance();
         updateMotorControlDisplay();
+        updateMotorControlButtons();
         
-        logUserOperation("Home position command sent");
-        showStatusMessage("Moving to home position");
+        logUserOperation("Home position - System reset from emergency stop");
+        showStatusMessage("System reset - Ready for operation");
     } else {
         ErrorDialog::showError(this, ErrorDialog::CommunicationError,
                              "Failed to send home command");
@@ -458,11 +461,21 @@ void MainWindow::onEmergencyStopClicked() {
     if (!m_controller) return;
     
     m_controller->emergencyStop();
+
+    ui->pushButton_5->setEnabled(false);
+    ui->pushButton_9->setEnabled(false);
+    ui->pushButton_7->setEnabled(false);
+    ui->pushButton_6->setEnabled(false);
+
+    ui->pushButton_8->setEnabled(true);
+    ui->pushButton_8->setStyleSheet(
+        "QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }"
+    );
+
+    ui->pushButton_12->setEnabled(true);
     
     logUserOperation("EMERGENCY STOP activated");
-    showStatusMessage("Emergency stop activated", 10000);
-    
-    updateMotorControlButtons();
+    showStatusMessage("EMERGENCY STOP - Press HOME button to reset", 10000);
 }
 
 void MainWindow::onSafetyLimitsChanged() {
@@ -529,12 +542,27 @@ void MainWindow::updateMotorControlButtons() {
     int motorStatus = m_controller->getMotorStatus();
     bool isMoving = (motorStatus == 1 || motorStatus == 3);
     
-    ui->pushButton_5->setEnabled(true);  // Set Height
-    ui->pushButton_9->setEnabled(true);  // Set Angle
-    ui->pushButton_7->setEnabled(isConnected);  // Move
-    ui->pushButton_8->setEnabled(isConnected);  // Home
-    ui->pushButton_6->setEnabled(isConnected && isMoving);  // Stop
-    ui->pushButton_12->setEnabled(true);  // Emergency Stop always enabled
+    if (m_controller->isEmergencyStopped()) {
+        ui->pushButton_5->setEnabled(false);
+        ui->pushButton_9->setEnabled(false);
+        ui->pushButton_7->setEnabled(false);
+        ui->pushButton_6->setEnabled(false);
+        
+        ui->pushButton_8->setEnabled(true);
+        ui->pushButton_8->setStyleSheet(
+            "QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }"
+        );
+        
+        ui->pushButton_12->setEnabled(true);
+    } else {
+        ui->pushButton_5->setEnabled(true);
+        ui->pushButton_9->setEnabled(true);
+        ui->pushButton_7->setEnabled(isConnected);
+        ui->pushButton_8->setEnabled(isConnected);
+        ui->pushButton_8->setStyleSheet("");
+        ui->pushButton_6->setEnabled(isConnected && isMoving);
+        ui->pushButton_12->setEnabled(true);
+    }
 }
 
 bool MainWindow::checkSafetyLimits(double height, double angle) {
@@ -584,32 +612,35 @@ void MainWindow::initializeSensorMonitor() {
 // ===== 第三页：传感器监控槽函数实现 =====
 
 void MainWindow::onRecordDataClicked() {
-    if (!m_controller) return;
+    Logger::getInstance().info("=== Record Data clicked ===");
+    if (!m_controller) {
+        Logger::getInstance().error("Controller is null");
+        return;
+    }
 
     showStatusMessage("Getting sensor data...");
     ui->pushButton_13->setEnabled(false);
 
-    m_controller->sendCommand("GET_SENSORS\r\n");
+    bool success = m_controller->updateSensorData();
     
-   QTimer::singleShot(500, this, [this]() {
+    if (success) {
+        updateSensorMonitorDisplay();
         if (m_controller->recordCurrentData()) {
-            updateSensorMonitorDisplay();
-            
             lastRecordTime = QDateTime::currentDateTime();
             ui->label_38->setText(lastRecordTime.toString("hh:mm:ss"));
             
             size_t count = m_controller->getRecordCount();
             showStatusMessage(QString("Data recorded (Total: %1)").arg(count));
-
+            
             logUserOperation(QString("Sensor data recorded at %1").arg(
                 lastRecordTime.toString("hh:mm:ss")));
-        } else {
-            ErrorDialog::showError(this, ErrorDialog::DataValidationError,
-                                 "Failed to get valid sensor data");
         }
-        
-        ui->pushButton_13->setEnabled(true);
-    });
+    } else {
+        ErrorDialog::showError(this, ErrorDialog::DataValidationError,
+                             "Failed to get valid sensor data");
+    }
+    
+    ui->pushButton_13->setEnabled(true);
 }
 
 void MainWindow::onExportDataClicked() {
@@ -665,33 +696,41 @@ void MainWindow::updateSensorMonitorDisplay() {
     
     QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(jsonData));
     QJsonObject obj = doc.object();
-
-    double upper1 = obj["distanceUpper1"].toDouble();
-    double upper2 = obj["distanceUpper2"].toDouble();
-    ui->label_44->setText(QString("%1 mm").arg(upper1, 0, 'f', 1));
-    ui->label_45->setText(QString("%1 mm").arg(upper2, 0, 'f', 1));
     
-    double lower1 = obj["distanceLower1"].toDouble();
-    double lower2 = obj["distanceLower2"].toDouble();
-    ui->label_53->setText(QString("%1 mm").arg(lower1, 0, 'f', 1));
-    ui->label_54->setText(QString("%1 mm").arg(lower2, 0, 'f', 1));
-
+    double upper1 = parseJsonValue(obj["distanceUpper1"]);
+    double upper2 = parseJsonValue(obj["distanceUpper2"]);
+    double lower1 = parseJsonValue(obj["distanceLower1"]);
+    double lower2 = parseJsonValue(obj["distanceLower2"]);
+    double temperature = parseJsonValue(obj["temperature"]);
+    double angle = parseJsonValue(obj["angle"]);
+    double capacitance = parseJsonValue(obj["capacitance"]);
+    double height = parseJsonValue(obj["height"]);
+    
+    ui->label_44->setText(formatSensorValue(upper1, 1, " mm"));
+    ui->label_45->setText(formatSensorValue(upper2, 1, " mm"));
+    ui->label_53->setText(formatSensorValue(lower1, 1, " mm"));
+    ui->label_54->setText(formatSensorValue(lower2, 1, " mm"));
+    ui->label_23->setText(formatSensorValue(height, 1, " mm"));
+    ui->label_25->setText(formatSensorValue(angle, 1, "°"));
+    ui->label_27->setText(formatSensorValue(temperature, 1, "°C"));
+    ui->label_30->setText(formatSensorValue(capacitance, 1, " pF"));
+    
+    setLabelStyle(ui->label_44, upper1);
+    setLabelStyle(ui->label_45, upper2);
+    setLabelStyle(ui->label_53, lower1);
+    setLabelStyle(ui->label_54, lower2);
+    setLabelStyle(ui->label_23, height);
+    setLabelStyle(ui->label_25, angle);
+    setLabelStyle(ui->label_27, temperature);
+    setLabelStyle(ui->label_30, capacitance);
+    
     double avgGround = (lower1 + lower2) / 2.0;
-    ui->label_56->setText(QString("%1 mm").arg(avgGround, 0, 'f', 1));
-    
-    double height = obj["height"].toDouble();
-    double angle = obj["angle"].toDouble();
-    double temperature = obj["temperature"].toDouble();
-    double capacitance = obj["capacitance"].toDouble();
-
-    ui->label_23->setText(QString("%1 mm").arg(height, 0, 'f', 1));
-    ui->label_25->setText(QString("%1°").arg(angle, 0, 'f', 1));
-    ui->label_27->setText(QString("%1°C").arg(temperature, 0, 'f', 1));
-    ui->label_30->setText(QString("%1 pF").arg(capacitance, 0, 'f', 1));
+    ui->label_56->setText(formatSensorValue(avgGround, 1, " mm"));
+    setLabelStyle(ui->label_56, avgGround);
     
     double theoretical = calculateTheoreticalCapacitance();
-    ui->label_32->setText(QString("%1 pF").arg(theoretical, 0, 'f', 1));
-    ui->label_34->setText(QString("%1 pF").arg(capacitance - theoretical, 0, 'f', 1));
+    ui->label_32->setText(formatSensorValue(theoretical, 1, " pF"));
+    ui->label_34->setText(formatSensorValue(capacitance - theoretical, 1, " pF"));
 }
 
 double MainWindow::calculateTheoreticalCapacitance() const {
@@ -702,6 +741,28 @@ double MainWindow::calculateTheoreticalCapacitance() const {
     return 0.0;
 }
 
+QString MainWindow::formatSensorValue(double value, int precision, const QString& suffix) {
+    if (std::isnan(value)) {
+        return "NaN";
+    } else if (std::isinf(value)) {
+        return value > 0 ? "+∞" : "-∞";
+    } else {
+        return QString("%1%2").arg(value, 0, 'f', precision).arg(suffix);
+    }
+}
+
+void MainWindow::setLabelStyle(QLabel* label, double value) {
+    if (std::isnan(value)) {
+        label->setStyleSheet("QLabel { color: red; font-weight: bold; }");
+        label->setToolTip("Not a Number - Sensor error");
+    } else if (std::isinf(value)) {
+        label->setStyleSheet("QLabel { color: orange; font-weight: bold; }");
+        label->setToolTip("Infinity - Out of range");
+    } else {
+        label->setStyleSheet("");
+        label->setToolTip("");
+    }
+}
 
 // ===== 第四页：日志查看UI初始化 =====
 
@@ -1104,6 +1165,10 @@ void MainWindow::handleDataReceived(const QString& data) {
 }
 
 void MainWindow::handleSensorData(const std::string& jsonData) {
+    if (jsonData.empty() || jsonData == "{}") {
+        return;
+    }
+    updateSensorMonitorDisplay();
 }
 
 void MainWindow::handleMotorStatusChanged(int status) {
@@ -1132,3 +1197,21 @@ void MainWindow::updateDataTable() {
 
 void MainWindow::onSensorUpdateTimer() {
 }
+
+double MainWindow::parseJsonValue(const QJsonValue& value) {
+    if (value.isString()) {
+        QString str = value.toString();
+        if (str == "NaN") {
+            return std::numeric_limits<double>::quiet_NaN();
+        } else if (str == "Inf" || str == "+Inf") {
+            return std::numeric_limits<double>::infinity();
+        } else if (str == "-Inf") {
+            return -std::numeric_limits<double>::infinity();
+        }
+        bool ok;
+        double d = str.toDouble(&ok);
+        return ok ? d : 0.0;
+    }
+    return value.toDouble();
+}
+

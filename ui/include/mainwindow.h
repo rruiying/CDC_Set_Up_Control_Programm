@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QDateTime>
 #include <memory>
+#include <QJsonValue>
 #include <vector>
 #include <string>
 
@@ -12,18 +13,22 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 class QListWidgetItem;
 class QResizeEvent;
+class QLabel;
 QT_END_NAMESPACE
 
 class ApplicationController;
-class DeviceInfo;  // 前向声明
+class DeviceInfo;
 
-// 简单的日志级别枚举（避免依赖Logger.h）
 enum class LogLevel {
     ALL = 0,
     INFO,
     WARNING,
     ERROR
 };
+
+namespace Ui {
+    class MainWindow;
+}
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -88,6 +93,10 @@ private:
     
     void addCommunicationLog(const QString& message, bool isOutgoing);
     void logUserOperation(const QString& operation);
+
+    double parseJsonValue(const QJsonValue& value);
+    QString formatSensorValue(double value, int precision, const QString& suffix);
+    void setLabelStyle(QLabel* label, double value);
     
     // 设备管理辅助方法
     QStringList getExistingDeviceNames() const;

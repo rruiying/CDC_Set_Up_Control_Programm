@@ -61,47 +61,63 @@ std::string CommandProtocol::buildBatchCommand(const std::vector<std::string>& c
 
 CommandResponse CommandProtocol::parseResponse(const std::string& response) {
     CommandResponse result;
-    
-    // 检查是否为空或无终止符
-    if (response.empty() || !hasTerminator(response)) {
+
+    std::istringstream stream(response);
+    std::string line;
+    std::string dataLine;
+
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.find("[DEBUG]") != std::string::npos) {
+            continue;
+        }
+        if (line.empty()) {
+            continue;
+        }
+        if (line.find("SENSORS:") == 0 || 
+            line.find("OK:") == 0 || 
+            line.find("ERROR:") == 0 ||
+            line.find("STATUS:") == 0) {
+            dataLine = line;
+            break;
+        }
+    }
+
+    if (dataLine.empty()) {
         result.type = ResponseType::UNKNOWN;
         result.success = false;
         return result;
     }
     
-    // 去除终止符
-    std::string cleanResponse = removeTerminator(response);
-    
-    // 分割类型和数据
-    size_t colonPos = cleanResponse.find(SEPARATOR);
+    size_t colonPos = dataLine.find(SEPARATOR);
     std::string type = (colonPos != std::string::npos) ? 
-                       cleanResponse.substr(0, colonPos) : cleanResponse;
+                       dataLine.substr(0, colonPos) : dataLine;
     std::string data = (colonPos != std::string::npos) ? 
-                       cleanResponse.substr(colonPos + 1) : "";
+                       dataLine.substr(colonPos + 1) : "";
     
-    // 解析响应类型
-    if (type == RSP_OK) {
+    if (type == RSP_OK || type == "OK") {
         result.type = ResponseType::OK;
         result.success = true;
         result.data = data;
     }
-    else if (type == RSP_ERROR) {
+    else if (type == RSP_ERROR || type == "ERROR") {
         result.type = ResponseType::ERROR;
         result.success = false;
         result.errorMessage = data;
     }
-    else if (type == RSP_SENSORS) {
+    else if (type == RSP_SENSORS || type == "SENSORS") {
         result.type = ResponseType::SENSOR_DATA;
         result.success = true;
         result.data = data;
         
-        // 尝试解析传感器数据
         SensorData sensorData;
         if (sensorData.parseFromString(data)) {
             result.sensorData = sensorData;
         }
     }
-    else if (type == RSP_STATUS) {
+    else if (type == RSP_STATUS || type == "STATUS") {
         result.type = ResponseType::STATUS;
         result.success = true;
         result.data = data;

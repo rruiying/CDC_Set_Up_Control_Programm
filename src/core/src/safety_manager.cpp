@@ -107,7 +107,6 @@ void SafetyManager::getEffectiveLimits(double& minHeight, double& maxHeight,
         minAngle = minAngleLimit;
         maxAngle = maxAngleLimit;
     }
-    applyModeModifiers(minHeight, maxHeight, minAngle, maxAngle);
 }
 
 void SafetyManager::setSpeedLimits(double maxHSpeed, double maxASpeed) {
@@ -191,11 +190,6 @@ std::vector<ForbiddenZone> SafetyManager::getForbiddenZones() const {
     return forbiddenZones;
 }
 
-void SafetyManager::setSafetyMode(SafetyMode mode) {
-    safetyMode = mode;
-    LOG_INFO_F("Safety mode set to: %d", static_cast<int>(mode));
-}
-
 void SafetyManager::setCurrentPosition(double height, double angle) {
     currentHeight = height;
     currentAngle = angle;
@@ -229,31 +223,6 @@ void SafetyManager::setViolationCallback(ViolationCallback callback) {
 void SafetyManager::setEmergencyStopCallback(EmergencyStopCallback callback) {
     std::lock_guard<std::mutex> lock(mutex);
     emergencyStopCallback = callback;
-}
-
-std::string SafetyManager::getSafetyStatus() const {
-    std::ostringstream oss;
-    
-    oss << "Safety Status:\n";
-    oss << "  Mode: ";
-    switch (safetyMode.load()) {
-        case SafetyMode::NORMAL: oss << "NORMAL"; break;
-        case SafetyMode::RESTRICTED: oss << "RESTRICTED"; break;
-        case SafetyMode::MAINTENANCE: oss << "MAINTENANCE"; break;
-    }
-    oss << "\n";
-    
-    oss << "  Emergency Stop: " << (emergencyStop ? "ACTIVE" : "INACTIVE") << "\n";
-    
-    double minH, maxH, minA, maxA;
-    getEffectiveLimits(minH, maxH, minA, maxA);
-    oss << "  Effective Limits: Height[" << minH << "-" << maxH << "]mm, ";
-    oss << "Angle[" << minA << "-" << maxA << "]°\n";
-    
-    oss << "  Forbidden Zones: " << forbiddenZones.size() << "\n";
-    oss << "  Violations: " << violations.size();
-    
-    return oss.str();
 }
 
 // 私有方法实现
@@ -320,34 +289,16 @@ void SafetyManager::notifyEmergencyStop(bool stopped) {
     }
 }
 
-void SafetyManager::applyModeModifiers(double& minHeight, double& maxHeight,
-                                       double& minAngle, double& maxAngle) const {
-    double heightRange = maxHeight - minHeight;
-    double angleRange = maxAngle - minAngle;
-    double heightCenter = (maxHeight + minHeight) / 2.0;
-    double angleCenter = (maxAngle + minAngle) / 2.0;
-    
-    switch (safetyMode.load()) {
-        case SafetyMode::RESTRICTED:
-            // 减少范围
-            heightRange *= RESTRICTED_MODE_FACTOR;
-            angleRange *= RESTRICTED_MODE_FACTOR;
-            break;
-            
-        case SafetyMode::MAINTENANCE:
-            // 增加范围
-            heightRange *= MAINTENANCE_MODE_FACTOR;
-            angleRange *= MAINTENANCE_MODE_FACTOR;
-            break;
-            
-        case SafetyMode::NORMAL:
-        default:
-            // 保持不变
-            break;
+void SafetyManager::reset() {
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        
+        emergencyStop = false;
+        emergencyStopReason.clear();
+        
+        violations.clear();
     }
     
-    minHeight = heightCenter - heightRange / 2.0;
-    maxHeight = heightCenter + heightRange / 2.0;
-    minAngle = angleCenter - angleRange / 2.0;
-    maxAngle = angleCenter + angleRange / 2.0;
+    LOG_INFO("Safety manager reset");
+    notifyEmergencyStop(false);
 }

@@ -1,218 +1,373 @@
-# CDC Control System - 电容位移控制系统
+# CDC Control System - Capacitive Displacement Control System
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Qt](https://img.shields.io/badge/Qt-5.15.2-green)
+![Qt](https://img.shields.io/badge/Qt-6.9.1-green)
 ![C++](https://img.shields.io/badge/C++-17-orange)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-## 📋 项目简介
+## 📋 Project Overview
 
-CDC控制系统是一个用于精密电容测量与控制的上位机软件，主要用于控制平行板电容器的高度和角度，实时监测电容值变化，并进行数据分析和可视化。
+CDC Control System is a precision capacitive measurement and control software designed for controlling the height and angle of parallel plate capacitors, real-time monitoring of capacitance changes, and data acquisition.
 
-### 主要功能
+### Key Features
 
-- 🔌 **串口通信管理** - 支持多设备连接与管理
-- 🎯 **精密电机控制** - Z轴高度和角度精确控制
-- 📊 **实时传感器监控** - 多传感器数据实时采集
-- 💾 **数据记录与导出** - CSV格式数据导出
-- 📈 **3D数据可视化** - 支持2D/3D图表分析
+- 🔌 **Serial Communication Management** - Multi-device connection and management
+- 🎯 **Precision Motor Control** - Z-axis height and angle control
+- 📊 **Real-time Sensor Monitoring** - Multi-sensor data acquisition
+- 💾 **Data Recording & Export** - CSV format data export
+- ⚙️ **Hardware Integration** - PSoC and sensor integration
 
-## 🛠️ 技术栈
+## 🛠️ Technology Stack
 
-- **开发语言**: C++17
-- **UI框架**: Qt 5.15.2
-- **图表库**: QCustomPlot 2.1.1 + Qt3D
-- **构建系统**: CMake 3.16+
-- **串口通信**: Qt SerialPort
-- **测试框架**: Google Test (可选)
+- **Programming Language**: C++17
+- **UI Framework**: Qt 6.9.1
+- **Build System**: CMake 3.16+
+- **Compiler**: Visual Studio 2022 (MSVC)
+- **Serial Communication**: Qt SerialPort
+- **Testing Framework**: Google Test (optional)
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 CDC_Control_System/
-├── src/                    # 源代码
-│   ├── app/               # 应用程序模块
-│   ├── core/              # 核心业务逻辑
-│   ├── data/              # 数据处理模块
-│   ├── hardware/          # 硬件接口层
-│   ├── models/            # 数据模型
-│   └── utils/             # 工具类
-├── ui/                     # 用户界面
-│   ├── forms/             # UI文件
-│   ├── include/           # 头文件
-│   └── src/               # 实现文件
-├── third_party/           # 第三方库
-│   └── qcustomplot/       # 图表库
-├── tests/                 # 单元测试
-├── docs/                  # 文档
-└── runtime/               # 运行时配置
+├── src/                    # Source code
+│   ├── app/               # Application modules
+│   │   ├── include/       # Application headers
+│   │   └── src/           # Application implementation
+│   ├── core/              # Core business logic
+│   │   ├── include/       # Core headers (motor, sensor, safety)
+│   │   └── src/           # Core implementation
+│   ├── data/              # Data processing modules
+│   │   ├── include/       # Data processing headers
+│   │   └── src/           # Data implementation (CSV, export)
+│   ├── hardware/          # Hardware interface layer
+│   │   ├── include/       # Hardware interface headers
+│   │   └── src/           # Serial/sensor communication
+│   ├── models/            # Data models
+│   │   ├── include/       # Model headers (physics, config)
+│   │   └── src/           # Model implementation
+│   └── utils/             # Utility classes
+│       ├── include/       # Utility headers (logger, math)
+│       └── src/           # Utility implementation
+├── ui/                     # User interface
+│   ├── forms/             # Qt UI files (.ui)
+│   ├── include/           # UI header files
+│   └── src/               # UI implementation files
+├── tests/                 # Unit tests
+│   ├── core_tests/        # Core module tests
+│   ├── data_tests/        # Data processing tests
+│   ├── hardware_tests/    # Hardware interface tests
+│   ├── models_tests/      # Model tests
+│   └── utils_tests/       # Utility tests
+├── docs/                  # Documentation
+│   ├── developer/         # Developer documentation
+│   └── user_manual/       # User manual
+├── resources/             # Application resources
+│   ├── config/            # Configuration files
+│   ├── icons/             # Application icons
+│   └── styles/            # UI stylesheets
+└── deploy/                # Deployment configuration
+    ├── package/           # Deployment packages
+    │   └── qt.conf        # Qt configuration file
+    ├── windows/           # Windows-specific deployment
+    │   ├── app.ico        # Application icon
+    │   └── deploy_windows.bat # Deployment script
+    └── macos/             # macOS-specific deployment
+        └── deploy_macos.sh # Deployment script
 ```
 
-## 🚀 快速开始
+## 🚀 Getting Started
 
-### 系统要求
+### System Requirements
 
-- **操作系统**: Windows 10/11, Ubuntu 20.04+, macOS 10.15+
-- **Qt版本**: 5.15.2 或更高
-- **CMake**: 3.16 或更高
-- **编译器**: 
-  - Windows: MSVC 2019/2022
-  - Linux: GCC 9.0+
-  - macOS: Clang 12+
+- **Primary Platform**: Windows 10/11 
+- **Secondary Platform**: macOS 10.15+ (experimental)
+- **Qt Version**: 6.9.1 or higher
+- **CMake**: 3.16 or higher
+- **Compilers**: 
+  - Windows: Visual Studio 2022 (MSVC)
+  - macOS: Xcode 12+ (Clang)
 
-### 安装步骤
+### Installation Steps
 
-1. **克隆仓库**
+1. **Clone Repository**
 ```bash
 git clone https://github.com/yourusername/CDC_Control_System.git
 cd CDC_Control_System
 ```
 
-2. **安装依赖**
+2. **Install Qt 6.9.1**
 
 **Windows:**
+- Download and install [Qt 6.9.1 for MSVC 2022 64-bit](https://www.qt.io/download)
+- Ensure the following components are selected:
+  - Qt 6.9.1 MSVC 2022 64-bit
+  - Qt SerialPort
+  - CMake
+  - Ninja
+
+**macOS:**
+
+*Option 1: Using Homebrew (Recommended)*
 ```bash
-# 使用Qt在线安装器安装Qt 5.15.2
-# 确保选择Qt3D组件
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Qt6
+brew install qt@6
 ```
 
-**Ubuntu/Debian:**
+*Option 2: Using Qt Installer*
+- Download Qt installer from [qt.io](https://www.qt.io/download)
+- Install Qt 6.9.1 for macOS
+- Ensure the following components are selected:
+  - Qt 6.9.1 macOS
+  - Qt SerialPort
+  - CMake (if not installed via Xcode)
+
+3. **Install Build Tools**
+
+**Windows:**
+- Install Visual Studio 2022 Community or higher
+- Include "Desktop development with C++" workload
+
+**macOS:**
+- Install Xcode from App Store
+- Install Xcode Command Line Tools:
 ```bash
-sudo apt-get update
-sudo apt-get install qt5-default qtbase5-dev qt3d5-dev
-sudo apt-get install build-essential cmake
+xcode-select --install
+```
+- Install Homebrew (if not already installed):
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+4. **Build Project**
+
+### Windows Build
+
+**Method 1: One-Click Build & Deploy** (Recommended)
+
+*Windows:*
+```batch
+# Modify paths in build_and_deploy.bat then run
+build_and_deploy.bat
+```
+
+*macOS:*
+```bash
+# Make executable and run
+chmod +x build_and_deploy_macos.sh
+./build_and_deploy_macos.sh
+```
+
+**Method 2: Manual Build**
+```batch
+# 1. Navigate to project directory
+cd C:\path\to\your\CDC_Set_Up_Control_Programm
+
+# 2. Clean and create build directory
+rmdir /s /q build
+mkdir build && cd build
+
+# 3. Configure CMake (modify Qt path to your actual installation)
+cmake -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_PREFIX_PATH="C:\Qt\6.9.1\msvc2022_64" ..
+
+# 4. Build project
+cmake --build . --config Release
+
+# 5. Navigate to executable directory
+cd build\bin\Release
+
+# 6. Deploy Qt dependencies
+C:\Qt\6.9.1\msvc2022_64\bin\windeployqt.exe CDC_Control_System.exe
+
+# 7. Run application
+CDC_Control_System.exe
+```
+
+### macOS Build
+
+**Method 1: Using Homebrew Qt**
+```bash
+# Install Qt using Homebrew
+brew install qt@6
+
+# Navigate to project directory
+cd /path/to/your/CDC_Set_Up_Control_Programm
+
+# Create build directory
+rm -rf build
+mkdir build && cd build
+
+# Configure CMake
+cmake -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)" \
+      -DCMAKE_BUILD_TYPE=Release ..
+
+# Build project
+cmake --build . --parallel $(sysctl -n hw.ncpu)
+
+# Run application
+open bin/CDC_Control_System.app
+# Or directly: ./bin/CDC_Control_System
+```
+
+**Method 2: Using Qt Installer**
+```bash
+# After installing Qt from qt.io to ~/Qt/6.9.1/macos
+cd /path/to/your/CDC_Set_Up_Control_Programm
+
+rm -rf build
+mkdir build && cd build
+
+# Configure CMake
+cmake -DCMAKE_PREFIX_PATH="$HOME/Qt/6.9.1/macos" \
+      -DCMAKE_BUILD_TYPE=Release ..
+
+# Build project
+cmake --build . --parallel $(sysctl -n hw.ncpu)
+
+# Deploy Qt frameworks (if needed for distribution)
+$HOME/Qt/6.9.1/macos/bin/macdeployqt bin/CDC_Control_System.app
+
+# Run application
+open bin/CDC_Control_System.app
+```
+
+5. **Create Distribution Package** (Optional)
+
+**Windows:**
+```batch
+# Run deployment script to create complete distribution package
+deploy\windows\deploy_windows.bat
 ```
 
 **macOS:**
 ```bash
-brew install qt@5 cmake
-brew link qt@5 --force
+# Run deployment script to create complete distribution package
+chmod +x deploy/macos/deploy_macos.sh
+./deploy/macos/deploy_macos.sh
+
+# Optional: Create DMG for distribution
+cd deploy/package/macos
+./create_dmg.sh
 ```
 
-3. **下载QCustomPlot**
-```bash
-cd third_party/qcustomplot
-wget https://www.qcustomplot.com/release/2.1.1/QCustomPlot.tar.gz
-tar -xzf QCustomPlot.tar.gz
-cp QCustomPlot/qcustomplot.* .
-```
+## 💻 Usage Instructions
 
-4. **构建项目**
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --parallel 4
-```
+### 1. Device Connection
+- Open software, navigate to "Serial Communication" page
+- Click "Add Device" to add serial port device
+- Select correct COM port and baud rate (default 115200)
+- Click "Connect" to establish connection
 
-5. **运行程序**
-```bash
-./bin/CDC_Control_System
-```
+### 2. Motor Control
+- Switch to "Motor Control" page
+- Set target height (0-100mm) and angle (-90° to 90°)
+- Click "Move to Position" to execute movement
+- Use "Emergency Stop" for immediate halt
 
-## 💻 使用说明
+### 3. Data Recording
+- View real-time data in "Sensor Monitor" page
+- Click "Record Data" to log current data point
+- Use "Export" to save data as CSV file
 
-### 1. 设备连接
-- 打开软件，进入"Serial Communication"页面
-- 点击"Add Device"添加串口设备
-- 选择正确的COM口和波特率（默认115200）
-- 点击"Connect"连接设备
+### 4. System Monitoring
+- Monitor sensor readings in real-time
+- Track system status and error conditions
+- Configure alarm thresholds and notifications
 
-### 2. 电机控制
-- 切换到"Motor Control"页面
-- 设置目标高度（0-100mm）和角度（-90°到90°）
-- 点击"Move to Position"执行移动
-- 使用"Emergency Stop"紧急停止
+## 🔧 Hardware Configuration
 
-### 3. 数据记录
-- 在"Sensor Monitor"页面查看实时数据
-- 点击"Record Data"记录当前数据点
-- 使用"Export"导出为CSV文件
+### Supported Hardware
+- **Main Controller**: PSoC 4500S
+- **Motor Driver**: TMC2208-LA
+- **Distance Sensors**: DFRobot SEN0427 (×4)
+- **Angle Sensor**: Murata SCA830-D07-1
+- **Temperature Sensor**: DS18B20+
+- **Servo Motor**: SER0019
 
-### 4. 数据可视化
-- 在"Data Visualization"页面加载CSV文件
-- 选择图表类型：
-  - 距离-电容分析
-  - 角度-电容分析
-  - 3D距离-角度-电容图
-  - 误差分析
-- 支持缩放、平移等交互操作
+### Communication Protocol
+- Baud Rate: 9600/19200/38400/57600/115200 (selectable)
+- Data Bits: 8
+- Stop Bits: 1
+- Parity: None
 
-## 🔧 硬件配置
+## 📊 Data Format
 
-### 支持的硬件
-- **主控芯片**: PSoC 4500S
-- **电机驱动**: TMC2208-LA
-- **距离传感器**: DFRobot SEN0427 (×4)
-- **角度传感器**: Murata SCA830-D07-1
-- **温度传感器**: DS18B20+
-- **伺服电机**: SER0019
-
-### 通信协议
-- 波特率: 9600/19200/38400/57600/115200 (可选)
-- 数据位: 8
-- 停止位: 1
-- 校验: 无
-
-## 📊 数据格式
-
-### CSV导出格式
+### CSV Export Format
 ```csv
 Timestamp,Set_Height(mm),Set_Angle(deg),Theoretical_Capacitance(pF),
 Upper_Sensor_1(mm),Upper_Sensor_2(mm),Lower_Sensor_1(mm),Lower_Sensor_2(mm),
 Temperature(C),Measured_Angle(deg),Measured_Capacitance(pF),...
 ```
 
-## 🐛 故障排除
+## 📦 Project Deployment
 
-### 常见问题
+### Automated Deployment
 
-1. **无法连接设备**
-   - 检查串口是否被占用
-   - 确认波特率设置正确
-   - 检查USB驱动是否安装
+**Windows:**
+The project includes complete automated deployment solution:
 
-2. **Qt3D无法显示**
-   - 确保安装了Qt3D模块
-   - 检查显卡驱动是否支持OpenGL 3.3+
+- `build_and_deploy.bat` - One-click build and deployment
+- `deploy/windows/deploy_windows.bat` - Windows-specific deployment script
+- `deploy/package/qt.conf` - Qt runtime configuration
+- `deploy/windows/app.ico` - Application icon
 
-3. **编译错误**
-   - 确认Qt版本 >= 5.15.2
-   - 检查CMake版本 >= 3.16
-   - 确保所有依赖库已安装
+Deployed application package is located in `deploy/package/windows/` directory and can be directly copied to other Windows computers.
 
-## 📝 开发文档
+**macOS:**
+Complete automated deployment with app bundle creation:
 
-- [架构设计](docs/developer/architecture.md)
-- [构建指南](docs/developer/build_guide.md)
-- [API文档](docs/api/index.html)
+- `deploy/macos/deploy_macos.sh` - macOS deployment script with auto Qt detection
+- Automatic `macdeployqt` execution
+- DMG creation script for distribution
+- App bundle with all dependencies included
 
-## 🤝 贡献指南
+```bash
+# One-command deployment
+chmod +x deploy/macos/deploy_macos.sh
+./deploy/macos/deploy_macos.sh
 
-欢迎提交Issue和Pull Request！
+# The deployed .app bundle is located in deploy/package/macos/
+```
 
-1. Fork本仓库
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启Pull Request
+### Manual Distribution
 
-## 📄 许可证
+**Windows:**
+For manual distribution package creation:
+1. Copy all files from `build/bin/Release/`
+2. Run `windeployqt.exe` to deploy Qt dependencies
+3. Include necessary runtime configuration files
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+**macOS:**
+For manual distribution:
+1. Build the application as shown above
+2. Use `macdeployqt` to create a self-contained app bundle
+3. Optionally create a DMG file for easier distribution
+4. For App Store distribution, code signing is required
 
-## 👥 团队
+## 🐛 Troubleshooting
 
-- **开发团队**: TUM LSE实验室
-- **项目负责人**: RuiYing
-- **联系方式**: [your.email@tum.de]
+### Common Issues
 
-## 🙏 致谢
+1. **Cannot Connect to Device**
+   - Check if serial port is in use
+   - Verify correct baud rate setting
+   - Check USB driver installation
 
-- Qt Framework
-- QCustomPlot
-- Google Test
-- 所有贡献者
+2. **Build Errors**
+   - Confirm Qt version >= 6.9.1
+   - Check CMake version >= 3.16
+   - Ensure Visual Studio 2022 is properly installed
+   - Verify Qt path configuration
 
----
+3. **windeployqt Cannot Find Dependencies**
+   - Confirm correct Qt installation path
+   - Check system PATH environment variable
+   - Try running with administrator privileges
 
-*最后更新: 2025年1月*
+4. **Application Won't Run on Other Computers**
+   - Ensure target computer has Visual C++ Redistributable 2022 installed
+   - Verify deployment package includes

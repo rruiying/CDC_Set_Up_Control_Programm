@@ -42,6 +42,8 @@ SensorData();
     bool setTemperature(double temp);
     bool setAngle(double angle);
     bool setCapacitance(double cap);
+    bool hasSpecialValues() const;
+    std::string getSpecialValuesDescription() const;
     
     bool isAllValid() const;
     bool hasValidData() const;

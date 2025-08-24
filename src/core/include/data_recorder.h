@@ -52,9 +52,6 @@ public:
     
     // 文件操作
     bool exportToCSV(const std::string& filename) const;
-    bool exportToCSV(const std::string& filename, 
-                     const std::chrono::system_clock::time_point& start,
-                     const std::chrono::system_clock::time_point& end) const;
     bool importFromCSV(const std::string& filename);
     
     // 自动保存

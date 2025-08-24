@@ -11,7 +11,6 @@
 
 SensorManager::SensorManager(std::shared_ptr<SerialInterface> serialInterface)
     : serial(serialInterface) {
-    // 从系统配置获取默认更新间隔
     updateInterval = SystemConfig::getInstance().getSensorUpdateInterval();
     
     LOG_INFO("SensorManager initialized with update interval: " + std::to_string(updateInterval.load()) + "ms");
@@ -356,5 +355,20 @@ void SensorManager::notifyError(const std::string& error) {
     { std::lock_guard<std::mutex> lock(mutex); cb = errorCallback; }
     if (cb) {
         cb(error);
+    }
+}
+
+void SensorManager::updateLatestData(const SensorData& data) {
+    std::lock_guard<std::mutex> lock(mutex);
+    latestData = data;
+    hasData = true;
+    
+    dataHistory.push_back(data);
+    while (dataHistory.size() > maxHistorySize) {
+        dataHistory.pop_front();
+    }
+    
+    if (dataCallback) {
+        dataCallback(data);
     }
 }

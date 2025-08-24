@@ -33,6 +33,7 @@ struct ApplicationController::Impl {
     
     std::vector<DeviceInfo> devices;
     int currentDeviceIndex = -1;
+    bool emergencyStopActive = false;
     
     ConnectionCallback connectionCallback;
     DataCallback dataCallback;
@@ -325,6 +326,14 @@ std::vector<std::string> ApplicationController::getAvailablePorts() const {
 // ===== 电机控制实现 =====
 
 bool ApplicationController::moveToPosition(double height, double angle) {
+    if (pImpl->emergencyStopActive) {
+        Logger::getInstance().warning("Cannot move - Emergency stop active");
+        if (pImpl->errorCallback) {
+            pImpl->errorCallback("System in emergency stop - Press HOME to reset");
+        }
+        return false;
+    }
+
     if (!pImpl->motor) {
         return false;
     }
@@ -349,6 +358,24 @@ bool ApplicationController::moveToPosition(double height, double angle) {
     return result;
 }
 
+bool ApplicationController::isEmergencyStopped() const {
+    return pImpl->emergencyStopActive;
+}
+
+// 获取系统状态
+SystemStatus ApplicationController::getSystemStatus() const {
+    if (pImpl->emergencyStopActive) {
+        return SystemStatus::EMERGENCY_STOP;
+    }
+    
+    // 查询MCU状态
+    if (pImpl->serial && pImpl->serial->isOpen()) {
+        pImpl->serial->sendCommand("GET_STATUS\r\n");
+    }
+    
+    return SystemStatus::READY;
+}
+
 bool ApplicationController::homeMotor() {
     if (!pImpl->motor) {
         return false;
@@ -359,7 +386,14 @@ bool ApplicationController::homeMotor() {
     if (result) {
         pImpl->targetHeight = 0.0;
         pImpl->targetAngle = 0.0;
-        Logger::getInstance().info("Motor homing initiated");
+        pImpl->emergencyStopActive = false;
+        if (pImpl->safety) {
+            pImpl->safety->reset();
+        }
+        Logger::getInstance().info("Motor homing initiated - Emergency stop cleared");
+        if (pImpl->errorCallback) {
+            pImpl->errorCallback("System reset - Ready for operation");
+        }
     }
     
     return result;
@@ -375,18 +409,17 @@ bool ApplicationController::stopMotor() {
 
 bool ApplicationController::emergencyStop() {
     bool result = false;
+
+    pImpl->emergencyStopActive = true;
     
-    // 触发安全管理器的紧急停止
     if (pImpl->safety) {
         pImpl->safety->triggerEmergencyStop("User activated");
     }
     
-    // 停止电机
     if (pImpl->motor) {
         result = pImpl->motor->emergencyStop();
     }
     
-    // 直接发送紧急停止命令到串口
     if (pImpl->serial && pImpl->serial->isOpen()) {
         pImpl->serial->sendCommand("EMERGENCY_STOP\r\n");
     }
@@ -394,7 +427,7 @@ bool ApplicationController::emergencyStop() {
     Logger::getInstance().error("EMERGENCY STOP ACTIVATED");
     
     if (pImpl->errorCallback) {
-        pImpl->errorCallback("Emergency stop activated");
+        pImpl->errorCallback("Emergency stop activated - Press HOME to reset");
     }
     
     return result;
@@ -444,7 +477,22 @@ bool ApplicationController::startSensorMonitoring() {
     if (!pImpl->sensor) {
         return false;
     }
-    
+    pImpl->sensor->setDataCallback([this](const SensorData& data) {
+        {
+            std::lock_guard<std::mutex> lock(pImpl->stateMutex);
+            pImpl->lastSensorData = data;
+        }
+
+        if (data.hasSpecialValues()) {
+            Logger::getInstance().warning("Sensor data contains special values: " + 
+                                        data.getSpecialValuesDescription());
+        }
+
+        if (pImpl->sensorCallback) {
+            std::string jsonData = pImpl->sensorDataToJson(data);
+            pImpl->sensorCallback(jsonData);
+        }
+    });
     return pImpl->sensor->start();
 }
 
@@ -489,7 +537,6 @@ size_t ApplicationController::getRecordCount() const {
 
 std::string ApplicationController::getCurrentSensorDataJson() const {
     std::lock_guard<std::mutex> lock(pImpl->stateMutex);
-    
     if (!pImpl->sensor || !pImpl->sensor->hasValidData()) {
         return "{}";
     }
@@ -498,14 +545,64 @@ std::string ApplicationController::getCurrentSensorDataJson() const {
     return pImpl->sensorDataToJson(data);
 }
 
+std::string ApplicationController::Impl::sensorDataToJson(const SensorData& data) const {
+    auto doubleToJson = [](double value) -> std::string {
+        if (std::isnan(value)) {
+            return "\"NaN\"";
+        } else if (std::isinf(value)) {
+            return value > 0 ? "\"Inf\"" : "\"-Inf\"";
+        } else {
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "%.3f", value);
+            return std::string(buffer);
+        }
+    };
+    
+    std::ostringstream json;
+    json << "{";
+
+    json << "\"distanceUpper1\":" << doubleToJson(data.distanceUpper1) << ",";
+    json << "\"distanceUpper2\":" << doubleToJson(data.distanceUpper2) << ",";
+    json << "\"distanceLower1\":" << doubleToJson(data.distanceLower1) << ",";
+    json << "\"distanceLower2\":" << doubleToJson(data.distanceLower2) << ",";
+    json << "\"temperature\":" << doubleToJson(data.temperature) << ",";
+    json << "\"angle\":" << doubleToJson(data.angle) << ",";
+    json << "\"capacitance\":" << doubleToJson(data.capacitance) << ",";
+    json << "\"height\":" << doubleToJson(data.getAverageHeight()) << ",";
+    json << "\"valid\":" << (data.hasValidData() ? "true" : "false");
+    json << "}";
+    
+    return json.str();
+}
+
 // ===== 数据导出实现 =====
 
 bool ApplicationController::exportToCSV(const std::string& filename) {
     if (!pImpl->recorder) {
-        Logger::getInstance().error("No recorder available");
+        Logger::getInstance().error("DataRecorder not available");
         return false;
     }
-    return pImpl->recorder->exportToCSV(filename);
+    
+    if (!pImpl->recorder->hasData()) {
+        Logger::getInstance().warning("No data to export");
+        return false;
+    }
+    
+    try {
+        bool success = pImpl->recorder->exportToCSV(filename);
+        
+        if (success) {
+            Logger::getInstance().info("Data exported to: " + filename);
+        } else {
+            Logger::getInstance().error("Failed to export data to: " + filename);
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        Logger::getInstance().error("Export failed: " + std::string(e.what()));
+        return false;
+    }
 }
 
 std::vector<MeasurementData> ApplicationController::getRecordedData() const {
@@ -670,23 +767,6 @@ void ApplicationController::Impl::setupCallbacks() {
     }
 }
 
-std::string ApplicationController::Impl::sensorDataToJson(const SensorData& data) const {
-    std::stringstream json;
-    json << "{"
-         << "\"height\":" << data.getAverageHeight() << ","
-         << "\"angle\":" << data.angle << ","
-         << "\"temperature\":" << data.temperature << ","
-         << "\"capacitance\":" << data.capacitance << ","
-         << "\"distanceUpper1\":" << data.distanceUpper1 << ","
-         << "\"distanceUpper2\":" << data.distanceUpper2 << ","
-         << "\"distanceLower1\":" << data.distanceLower1 << ","
-         << "\"distanceLower2\":" << data.distanceLower2 << ","
-         << "\"timestamp\":" << data.timestamp << ","
-         << "\"valid\":" << (data.isAllValid() ? "true" : "false")
-         << "}";
-    return json.str();
-}
-
 DeviceInfoData ApplicationController::getCurrentDevice() const {
     if (pImpl->currentDeviceIndex >= 0 && 
         pImpl->currentDeviceIndex < pImpl->devices.size()) {
@@ -848,4 +928,66 @@ bool ApplicationController::saveLogsToFile(const std::string& filename) {
     } catch (...) {
         return false;
     }
+}
+
+bool ApplicationController::isRecording() const {
+    if (pImpl->recorder) {
+        return pImpl->recorder->isRecording();
+    }
+    return false;
+}
+
+bool ApplicationController::updateSensorData() {
+    Logger::getInstance().info("=== Manual sensor update ===");
+    
+    if (!pImpl->serial || !pImpl->serial->isOpen()) {
+        Logger::getInstance().error("Serial port not open");
+        return false;
+    }
+    
+    std::string response = pImpl->serial->sendAndReceive("GET_SENSORS\r\n", 2000);
+    Logger::getInstance().info("Raw response: [" + response + "]");
+    
+    if (response.empty()) {
+        Logger::getInstance().error("Empty response");
+        return false;
+    }
+    
+    CommandResponse cmdResponse = CommandProtocol::parseResponse(response);
+    
+    if (cmdResponse.type == ResponseType::SENSOR_DATA && cmdResponse.sensorData.has_value()) {
+        SensorData data = cmdResponse.sensorData.value();
+        
+        Logger::getInstance().info("Sensor data received:");
+        Logger::getInstance().info("  D1: " + std::to_string(data.distanceUpper1));
+        Logger::getInstance().info("  D2: " + std::to_string(data.distanceUpper2));
+        Logger::getInstance().info("  Temp: " + std::to_string(data.temperature));
+        Logger::getInstance().info("  Angle: " + std::to_string(data.angle));
+        
+        {
+            std::lock_guard<std::mutex> lock(pImpl->stateMutex);
+            pImpl->lastSensorData = data;
+        }
+        
+        if (pImpl->sensor) {
+            pImpl->sensor->updateLatestData(data);
+        }
+        
+        if (pImpl->sensorCallback) {
+            std::string jsonData = pImpl->sensorDataToJson(data);
+            pImpl->sensorCallback(jsonData);
+        }
+        
+        return true;
+    }
+    
+    Logger::getInstance().error("Failed to parse sensor response");
+    return false;
+}
+
+std::string ApplicationController::sendAndReceiveCommand(const std::string& command, int timeoutMs) {
+    if (!pImpl->serial) {
+        return "";
+    }
+    return pImpl->serial->sendAndReceive(command, timeoutMs);
 }
