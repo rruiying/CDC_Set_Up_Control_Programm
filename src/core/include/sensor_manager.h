@@ -1,4 +1,3 @@
-// src/core/include/sensor_manager.h
 #ifndef SENSOR_MANAGER_H
 #define SENSOR_MANAGER_H
 
@@ -28,27 +27,9 @@ struct SensorStatistics {
     double averageReadTime = 0.0; // 平均读取时间
 };
 
-/**
- * @brief 传感器管理器类
- * 
- * 负责管理传感器数据的定时读取：
- * - 自动定时读取
- * - 数据过滤和验证
- * - 历史数据管理
- * - 统计信息
- * - 回调通知
- */
 class SensorManager {
 public:
-    /**
-     * @brief 构造函数
-     * @param serialInterface 串口接口（共享指针）
-     */
     explicit SensorManager(std::shared_ptr<SerialInterface> serialInterface);
-    
-    /**
-     * @brief 析构函数
-     */
     ~SensorManager();
     
     // 回调函数类型
@@ -68,6 +49,7 @@ public:
     
     // 数据访问
     bool hasValidData() const;
+    void updateLatestData(const SensorData& data);
     SensorData getLatestData() const;
     std::vector<SensorData> getDataHistory() const;
     SensorData getAverageData(size_t count) const; // 获取最近n个数据的平均值
@@ -93,7 +75,7 @@ public:
     
     // 统计信息
     SensorStatistics getStatistics() const;
-    int getReadCount() const { return statistics.totalReads; }
+    int getReadCount() const;
     void resetStatistics();
     
     // 重置
@@ -109,7 +91,6 @@ private:
     void updateStatistics(bool success, int64_t readTime);
     void notifyDataReceived(const SensorData& data);
     void notifyError(const std::string& error);
-    int64_t getCurrentTimestamp() const;
     
     // 成员变量
     std::shared_ptr<SerialInterface> serial;

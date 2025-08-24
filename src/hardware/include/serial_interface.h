@@ -1,4 +1,3 @@
-// src/hardware/include/serial_interface.h
 #ifndef SERIAL_INTERFACE_H
 #define SERIAL_INTERFACE_H
 
@@ -11,9 +10,6 @@
 #include <atomic>
 #include <queue>
 
-/**
- * @brief 串口信息结构
- */
 struct SerialPortInfo {
     std::string portName;     // 端口名称（如 COM3, /dev/ttyUSB0）
     std::string description;  // 端口描述
@@ -21,9 +17,6 @@ struct SerialPortInfo {
     bool isAvailable;         // 是否可用
 };
 
-/**
- * @brief 数据位枚举
- */
 enum class DataBits {
     FIVE = 5,
     SIX = 6,
@@ -31,9 +24,6 @@ enum class DataBits {
     EIGHT = 8
 };
 
-/**
- * @brief 校验位枚举
- */
 enum class Parity {
     NONE,
     ODD,
@@ -42,27 +32,18 @@ enum class Parity {
     SPACE
 };
 
-/**
- * @brief 停止位枚举
- */
 enum class StopBits {
     ONE,
     ONE_POINT_FIVE,
     TWO
 };
 
-/**
- * @brief 流控制枚举
- */
 enum class FlowControl {
     NONE,
     HARDWARE,
     SOFTWARE
 };
 
-/**
- * @brief 串口配置结构
- */
 struct SerialPortConfig {
     int baudRate = 115200;
     DataBits dataBits = DataBits::EIGHT;
@@ -73,15 +54,6 @@ struct SerialPortConfig {
     int writeTimeout = 1000; // 毫秒
 };
 
-/**
- * @brief 串口接口类
- * 
- * 提供跨平台的串口通信功能：
- * - 端口枚举和管理
- * - 数据收发
- * - 异步通信支持
- * - 自动重连
- */
 class SerialInterface {
 public:
     SerialInterface();

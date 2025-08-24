@@ -1,16 +1,16 @@
-// src/core/src/sensor_manager.cpp
 #include "../include/sensor_manager.h"
+#include <mutex>
 #include "../../hardware/include/serial_interface.h"
 #include "../../hardware/include/command_protocol.h"
 #include "../../models/include/system_config.h"
 #include "../../utils/include/logger.h"
+#include "../../utils/include/time_utils.h"
 #include <algorithm>
 #include <numeric>
 #include <cmath>
 
 SensorManager::SensorManager(std::shared_ptr<SerialInterface> serialInterface)
     : serial(serialInterface) {
-    // 从系统配置获取默认更新间隔
     updateInterval = SystemConfig::getInstance().getSensorUpdateInterval();
     
     LOG_INFO("SensorManager initialized with update interval: " + std::to_string(updateInterval.load()) + "ms");
@@ -78,10 +78,10 @@ void SensorManager::resume() {
 }
 
 bool SensorManager::readSensorsOnce() {
-    auto startTime = getCurrentTimestamp();
+    auto startTime = TimeUtils::getCurrentTimestamp();
     bool success = performRead();
-    auto readTime = getCurrentTimestamp() - startTime;
-    
+    auto readTime = TimeUtils::getCurrentTimestamp() - startTime;
+
     updateStatistics(success, readTime);
     
     return success;
@@ -163,6 +163,11 @@ void SensorManager::setDataCallback(DataCallback callback) {
 void SensorManager::setErrorCallback(ErrorCallback callback) {
     std::lock_guard<std::mutex> lock(mutex);
     errorCallback = callback;
+}
+
+int SensorManager::getReadCount() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return statistics.totalReads;
 }
 
 SensorStatistics SensorManager::getStatistics() const {
@@ -276,28 +281,24 @@ bool SensorManager::performRead() {
 }
 
 void SensorManager::processNewData(const SensorData& data) {
-    std::lock_guard<std::mutex> lock(mutex);
-    
-    // 更新最新数据
-    latestData = data;
-    hasData = true;
-    
-    // 添加到历史
-    dataHistory.push_back(data);
-    
-    // 限制历史大小
-    while (dataHistory.size() > maxHistorySize) {
-        dataHistory.pop_front();
+    DataCallback cb;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      latestData = data;
+      hasData = true;
+      dataHistory.push_back(data);
+      while (dataHistory.size() > maxHistorySize) {
+          dataHistory.pop_front();
+      }
+      cb = dataCallback;
     }
-    
-    // 通知回调
-    notifyDataReceived(data);
-    
+    if (cb) {
+        cb(data);
+    }
     LOG_INFO_F("Sensor data updated: Upper[%.1f,%.1f] Lower[%.1f,%.1f] Temp:%.1f°C Angle:%.1f° Cap:%.1fpF",
                data.distanceUpper1, data.distanceUpper2,
                data.distanceLower1, data.distanceLower2,
-               data.temperature, data.angle,
-               data.capacitance);
+               data.temperature, data.angle, data.capacitance);
 }
 
 bool SensorManager::isDataValid(const SensorData& data) const {
@@ -306,11 +307,13 @@ bool SensorManager::isDataValid(const SensorData& data) const {
 }
 
 bool SensorManager::shouldFilterData(const SensorData& newData) const {
-    if (!hasData) {
-        return false;
+    SensorData last;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!hasData) return false;
+        last = latestData;
     }
     
-    // 计算与上次数据的变化百分比
     auto calculateChange = [this](double oldVal, double newVal) -> double {
         if (std::abs(oldVal) < 0.001) {
             return std::abs(newVal) > filterThreshold ? 100.0 : 0.0;
@@ -318,11 +321,9 @@ bool SensorManager::shouldFilterData(const SensorData& newData) const {
         return std::abs((newVal - oldVal) / oldVal) * 100.0;
     };
     
-    // 检查各个传感器的变化
-    double changeUpper1 = calculateChange(latestData.distanceUpper1, newData.distanceUpper1);
-    double changeUpper2 = calculateChange(latestData.distanceUpper2, newData.distanceUpper2);
-    
-    // 如果任何传感器变化超过阈值，过滤数据
+    double changeUpper1 = calculateChange(last.distanceUpper1, newData.distanceUpper1);
+    double changeUpper2 = calculateChange(last.distanceUpper2, newData.distanceUpper2);
+
     return changeUpper1 > filterThreshold || changeUpper2 > filterThreshold;
 }
 
@@ -331,7 +332,7 @@ void SensorManager::updateStatistics(bool success, int64_t readTime) {
     
     statistics.totalReads++;
     statistics.totalReadTime += readTime;
-    statistics.lastReadTime = getCurrentTimestamp();
+    statistics.lastReadTime = TimeUtils::getCurrentTimestamp();
     
     if (success) {
         statistics.successfulReads++;
@@ -341,28 +342,33 @@ void SensorManager::updateStatistics(bool success, int64_t readTime) {
 }
 
 void SensorManager::notifyDataReceived(const SensorData& data) {
-    if (dataCallback) {
-        // 在锁外调用回调，避免死锁
-        std::thread([this, data]() {
-            dataCallback(data);
-        }).detach();
+    DataCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = dataCallback; }
+    if (cb) {
+        cb(data);
     }
 }
 
 void SensorManager::notifyError(const std::string& error) {
     LOG_ERROR("SensorManager error: " + error);
-    
-    if (errorCallback) {
-        // 在锁外调用回调
-        std::thread([this, error]() {
-            errorCallback(error);
-        }).detach();
+    ErrorCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = errorCallback; }
+    if (cb) {
+        cb(error);
     }
 }
 
-int64_t SensorManager::getCurrentTimestamp() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto duration = now.time_since_epoch();
-    return duration_cast<milliseconds>(duration).count();
+void SensorManager::updateLatestData(const SensorData& data) {
+    std::lock_guard<std::mutex> lock(mutex);
+    latestData = data;
+    hasData = true;
+    
+    dataHistory.push_back(data);
+    while (dataHistory.size() > maxHistorySize) {
+        dataHistory.pop_front();
+    }
+    
+    if (dataCallback) {
+        dataCallback(data);
+    }
 }

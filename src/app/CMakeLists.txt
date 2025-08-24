@@ -1,33 +1,39 @@
-# src/app/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
-set(APP_HEADERS
-    include/application.h
+add_library(controller_lib STATIC
+    include/application_controller.h
+    src/application_controller.cpp
 )
 
-set(APP_SOURCES
-    src/application.cpp
+target_include_directories(controller_lib
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(controller_lib
+    PUBLIC
+        core_lib
+        data_lib
+        hardware_lib
+        models_lib
+        utils_lib
 )
 
 add_library(app_lib STATIC
-    ${APP_SOURCES}
-    ${APP_HEADERS}
+    include/application.h
+    src/application.cpp
 )
 
-target_include_directories(app_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src  # 添加源码根目录
+target_include_directories(app_lib
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(app_lib PUBLIC
-    Qt6::Core
-    Qt6::Widgets
-    core_lib
-    data_lib
-    hardware_lib
-    models_lib
-    ui_lib
-    utils_lib
+target_link_libraries(app_lib
+    PUBLIC
+        controller_lib
+    PRIVATE 
+        Qt6::Core
+        Qt6::Widgets
+        ui_lib
 )
 
 set_target_properties(app_lib PROPERTIES AUTOMOC ON)

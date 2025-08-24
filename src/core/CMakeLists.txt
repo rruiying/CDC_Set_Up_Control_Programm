@@ -1,6 +1,3 @@
-# src/core/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
 set(CORE_HEADERS
     include/data_recorder.h
     include/motor_controller.h
@@ -24,11 +21,11 @@ target_include_directories(core_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(core_lib PUBLIC
-    Qt6::Core
-    models_lib
-    hardware_lib
-    utils_lib
+target_link_libraries(core_lib
+    PUBLIC
+        models_lib
+        hardware_lib
+        utils_lib
 )
 
-set_target_properties(core_lib PROPERTIES AUTOMOC ON)
+target_compile_features(core_lib PUBLIC cxx_std_17)

@@ -1,4 +1,3 @@
-// src/data/include/data_processor.h
 #ifndef DATA_PROCESSOR_H
 #define DATA_PROCESSOR_H
 
@@ -285,8 +284,7 @@ class DataProcessor {
         
         // FFT实现
         std::vector<std::complex<double>> fft(const std::vector<std::complex<double>>& data) const;
-        std::vector<std::complex<double>> ifft(const std::vector<std::complex<double>>& data) const;
-        
+        std::vector<std::complex<double>> dft(const std::vector<std::complex<double>>& data) const;
         // 插值实现
         double linearInterpolate(double x0, double y0, double x1, double y1, double x) const;
         double cubicInterpolate(const std::vector<double>& x, const std::vector<double>& y, double xi) const;

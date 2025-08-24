@@ -8,26 +8,6 @@
 #include <mutex>
 #include <memory>
 
-/**
- * @brief 电机速度枚举
- */
-enum class MotorSpeed {
-    SLOW,
-    MEDIUM,
-    FAST
-};
-
-/**
- * @brief 系统配置类（单例模式）
- * 
- * 管理所有系统配置参数：
- * - 安全限位
- * - 电容板参数
- * - 系统尺寸
- * - 通信参数
- * - 电机控制参数
- * - 数据记录参数
- */
 class SystemConfig {
 public:
     /**
@@ -75,11 +55,6 @@ public:
     double getSystemHeight() const { return totalHeight; }
     
     // ===== 电机控制 =====
-    void setMotorSpeed(MotorSpeed speed);
-    MotorSpeed getMotorSpeed() const { return motorSpeed; }
-    std::string getMotorSpeedString() const;
-    void setMotorSpeedFromString(const std::string& speedStr);
-    
     void setHomePosition(double height, double angle);
     double getHomeHeight() const { return homeHeight; }
     double getHomeAngle() const { return homeAngle; }
@@ -132,21 +107,19 @@ private:
     
     // 安全限位
     double minHeight = 0.0;
-    double maxHeight = 180.0;    // 改为180mm
+    double maxHeight = 150.0;
     double minAngle = -90.0;
     double maxAngle = 90.0;
     
     // 电容板参数
-    double plateArea = 2500.0;   // mm² (50mm x 50mm)
+    double plateArea = 2500.0;   // mmm² (50mm x 50mm)
     double dielectricConstant = 1.0;
     
     // 系统尺寸
-    double totalHeight = 180.0;      // mm，改为180mm
+    double totalHeight = 150.0;      // mm
     double middlePlateHeight = 25.0; // mm
-    double sensorSpacing = 80.0;     // mm，改为80mm
+    double sensorSpacing = 80.0;     // mm
     
-    // 电机控制
-    MotorSpeed motorSpeed = MotorSpeed::MEDIUM;
     double homeHeight = 0.0;         // mm，改为0
     double homeAngle = 0.0;          // degrees
     

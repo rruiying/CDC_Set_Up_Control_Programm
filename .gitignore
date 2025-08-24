@@ -1,11 +1,13 @@
 # Build directories
 build/
-Build/
 debug/
 Debug/
 release/
 Release/
 cmake-build-*/
+bin/
+lib/
+*.csv
 
 # Qt Creator files
 *.pro.user
@@ -20,6 +22,9 @@ CMakeLists.txt.user*
 *.swp
 *.swo
 *~
+.clangd/
+.cache/
+compile_commands.json
 
 # Compiled files
 *.o
@@ -30,6 +35,9 @@ CMakeLists.txt.user*
 *.dylib
 *.a
 *.lib
+*.pdb
+*.ilk
+*.exp
 
 # MOC/UIC/RCC generated files
 moc_*.cpp
@@ -38,9 +46,17 @@ ui_*.h
 qrc_*.cpp
 *.moc
 
+# Qt resource files (generated)
+*_qmlcache.qrc
+*.qm
+
 # Test results
 test_results/
 *.log
+coverage/
+*.gcda
+*.gcno
+*.lcov
 
 # Runtime data
 runtime/data/logs/*
@@ -53,17 +69,53 @@ runtime/data/temp/*
 # Config files (keep templates)
 config.json
 !config.json.template
+*.ini
+!*.ini.template
 
 # OS files
 .DS_Store
 Thumbs.db
 desktop.ini
+.directory
 
 # Documentation build
 docs/build/
 docs/html/
 docs/latex/
+doxygen_sqlite3.db
 
-*.user
-*.user.*
-CMakeLists.txt.user*
+# Package manager files
+vcpkg_installed/
+conan.lock
+CMakeUserPresets.json
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*~
+
+# Core dumps
+core
+core.*
+
+# Debug symbols
+*.dSYM/
+
+# Visual Studio specific
+*.vcxproj.user
+*.sln.docstates
+.vs/
+x64/
+x86/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.opendb
+
+# Temporary files
+*.temp

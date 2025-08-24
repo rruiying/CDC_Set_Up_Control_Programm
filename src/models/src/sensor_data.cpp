@@ -1,32 +1,45 @@
-// src/models/src/sensor_data.cpp
 #include "../include/sensor_data.h"
+#include "../include/system_config.h"
+#include "../../utils/include/time_utils.h"
+#include "../include/physics_constants.h"
+#include "../../utils/include/math_utils.h"
+#include "../../utils/include/logger.h"
 #include <sstream>
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
-
-// 定义传感器范围常量
-namespace {
-    const double DISTANCE_SENSOR_MIN = 0.0;
-    const double DISTANCE_SENSOR_MAX = 300.0;
-    const double TEMPERATURE_MIN = -40.0;
-    const double TEMPERATURE_MAX = 85.0;
-    const double ANGLE_MIN = -90.0;
-    const double ANGLE_MAX = 90.0;
-    const double CAPACITANCE_MIN = 0.0;
-    const double CAPACITANCE_MAX = 1000.0;
-}
+#include <chrono>
+#include <ctime>
 
 SensorData::SensorData() 
     : distanceUpper1(0.0), distanceUpper2(0.0),
       distanceLower1(0.0), distanceLower2(0.0),
       temperature(0.0), angle(0.0),
-      capacitance(0.0) {
-    reset();
+      capacitance(0.0),
+      timestamp(TimeUtils::getCurrentTimestamp()) {
+    const auto& config = SystemConfig::getInstance();
+
+    
+    // 初始化有效性标志
+    isValid.distanceUpper1 = false;
+    isValid.distanceUpper2 = false;
+    isValid.distanceLower1 = false;
+    isValid.distanceLower2 = false;
+    isValid.temperature = false;
+    isValid.angle = false;
+    isValid.capacitance = false;
 }
 
-SensorData::SensorData(const SensorData& other) {
-    *this = other;
+SensorData::SensorData(const SensorData& other)
+:   distanceUpper1(other.distanceUpper1),
+    distanceUpper2(other.distanceUpper2),
+    distanceLower1(other.distanceLower1),
+    distanceLower2(other.distanceLower2),
+    temperature(other.temperature),
+    angle(other.angle),
+    capacitance(other.capacitance),
+    timestamp(other.timestamp),
+    isValid(other.isValid){
 }
 
 SensorData& SensorData::operator=(const SensorData& other) {
@@ -40,9 +53,6 @@ SensorData& SensorData::operator=(const SensorData& other) {
         capacitance = other.capacitance;
         timestamp = other.timestamp;
         isValid = other.isValid;
-        systemHeight = other.systemHeight;
-        middlePlateHeight = other.middlePlateHeight;
-        sensorSpacing = other.sensorSpacing;
     }
     return *this;
 }
@@ -55,6 +65,7 @@ void SensorData::reset() {
     temperature = 0.0;
     angle = 0.0;
     capacitance = 0.0;
+    timestamp = TimeUtils::getCurrentTimestamp();
     
     isValid.distanceUpper1 = false;
     isValid.distanceUpper2 = false;
@@ -66,20 +77,39 @@ void SensorData::reset() {
 }
 
 double SensorData::getAverageHeight() const {
-    if (isValid.distanceUpper1 && isValid.distanceUpper2) {
+    bool d1_special = std::isnan(distanceUpper1) || std::isinf(distanceUpper1);
+    bool d2_special = std::isnan(distanceUpper2) || std::isinf(distanceUpper2);
+    
+    if (isValid.distanceUpper1 && isValid.distanceUpper2 && !d1_special && !d2_special) {
         return (distanceUpper1 + distanceUpper2) / 2.0;
-    } else if (isValid.distanceUpper1) {
+    } 
+    else if (isValid.distanceUpper1 && !d1_special) {
         return distanceUpper1;
-    } else if (isValid.distanceUpper2) {
+    } 
+    else if (isValid.distanceUpper2 && !d2_special) {
         return distanceUpper2;
     }
+    else if ((isValid.distanceUpper1 && std::isnan(distanceUpper1)) || 
+             (isValid.distanceUpper2 && std::isnan(distanceUpper2))) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    else if ((isValid.distanceUpper1 && std::isinf(distanceUpper1)) || 
+             (isValid.distanceUpper2 && std::isinf(distanceUpper2))) {
+        if (std::isinf(distanceUpper1)) return distanceUpper1;
+        if (std::isinf(distanceUpper2)) return distanceUpper2;
+    }
+    
     return 0.0;
 }
 
 double SensorData::getCalculatedAngle() const {
-    if (isValid.distanceUpper1 && isValid.distanceUpper2 && sensorSpacing > 0) {
-        double heightDiff = distanceUpper2 - distanceUpper1;
-        return std::atan(heightDiff / sensorSpacing) * 180.0 / M_PI;
+    if (isValid.distanceUpper1 && isValid.distanceUpper2) {
+        double spacing = SystemConfig::getInstance().getSensorSpacing();
+        if (spacing > 0) {
+            double heightDiff = distanceUpper2 - distanceUpper1;
+            double rad = std::atan(heightDiff / spacing);
+            return rad * PhysicsConstants::RAD_TO_DEG;
+        }
     }
     return 0.0;
 }
@@ -96,24 +126,22 @@ double SensorData::getAverageGroundDistance() const {
 }
 
 double SensorData::getCalculatedUpperDistance() const {
-    return systemHeight - getAverageGroundDistance() - middlePlateHeight - getAverageHeight();
+    const auto& config = SystemConfig::getInstance();
+    return config.getTotalHeight() - getAverageGroundDistance() - 
+           config.getMiddlePlateHeight() - getAverageHeight();
 }
 
 bool SensorData::setUpperSensors(double sensor1, double sensor2) {
-    if (isInRange(sensor1, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX) &&
-        isInRange(sensor2, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX)) {
         distanceUpper1 = sensor1;
         distanceUpper2 = sensor2;
         isValid.distanceUpper1 = true;
         isValid.distanceUpper2 = true;
         return true;
-    }
-    return false;
 }
 
 bool SensorData::setLowerSensors(double sensor1, double sensor2) {
-    if (isInRange(sensor1, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX) &&
-        isInRange(sensor2, DISTANCE_SENSOR_MIN, DISTANCE_SENSOR_MAX)) {
+    if (MathUtils::isInRange(sensor1, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX) &&
+        MathUtils::isInRange(sensor2, PhysicsConstants::DISTANCE_SENSOR_MIN, PhysicsConstants::DISTANCE_SENSOR_MAX)) {
         distanceLower1 = sensor1;
         distanceLower2 = sensor2;
         isValid.distanceLower1 = true;
@@ -124,36 +152,24 @@ bool SensorData::setLowerSensors(double sensor1, double sensor2) {
 }
 
 bool SensorData::setTemperature(double temp) {
-    if (isInRange(temp, TEMPERATURE_MIN, TEMPERATURE_MAX)) {
         temperature = temp;
         isValid.temperature = true;
         return true;
-    }
-    return false;
 }
 
 bool SensorData::setAngle(double a) {
-    if (isInRange(a, ANGLE_MIN, ANGLE_MAX)) {
         angle = a;
         isValid.angle = true;
         return true;
-    }
-    return false;
 }
 
 bool SensorData::setCapacitance(double cap) {
-    if (isInRange(cap, CAPACITANCE_MIN, CAPACITANCE_MAX)) {
-        capacitance = cap;
         isValid.capacitance = true;
         return true;
-    }
-    return false;
 }
 
 bool SensorData::isAllValid() const {
-    return isValid.distanceUpper1 && isValid.distanceUpper2 &&
-           isValid.distanceLower1 && isValid.distanceLower2 &&
-           isValid.temperature && isValid.angle && isValid.capacitance;
+    return true;
 }
 
 bool SensorData::hasValidData() const {
@@ -166,78 +182,99 @@ bool SensorData::parseFromString(const std::string& dataString) {
     if (dataString.empty()) {
         return false;
     }
-    
     std::vector<double> values = parseNumbers(dataString);
-    
-    // 需要7个值
+
     if (values.size() != 7) {
+        LOG_ERROR("Expected 7 values, got " + std::to_string(values.size()));
         return false;
     }
+    distanceUpper1 = values[0];
+    distanceUpper2 = values[1];
+    distanceLower1 = values[2];
+    distanceLower2 = values[3];
+    temperature = values[4];
+    angle = values[5];
+    capacitance = values[6];
+    isValid.distanceUpper1 = true;
+    isValid.distanceUpper2 = true;
+    isValid.distanceLower1 = true;
+    isValid.distanceLower2 = true;
+    isValid.temperature = true;
+    isValid.angle = true;
+    isValid.capacitance = true;
+
+    if (std::isnan(distanceUpper1)) LOG_WARNING("Distance1 is NaN");
+    if (std::isinf(distanceUpper1)) LOG_WARNING("Distance1 is Inf");
+    if (std::isnan(temperature)) LOG_WARNING("Temperature is NaN");
+    if (std::isinf(temperature)) LOG_WARNING("Temperature is Inf");
+    if (std::isnan(angle)) LOG_WARNING("Angle is NaN");
+    if (std::isinf(angle)) LOG_WARNING("Angle is Inf");
     
-    // 使用setter方法设置数据（包含范围检查）
-    bool success = true;
-    success &= setUpperSensors(values[0], values[1]);
-    success &= setLowerSensors(values[2], values[3]);
-    success &= setTemperature(values[4]);
-    success &= setAngle(values[5]);
-    success &= setCapacitance(values[6]);
-    
-    return success;
+    return true;
 }
 
 std::string SensorData::toString() const {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1);
     oss << "SensorData{";
+
+    auto formatValue = [](double value, const std::string& unit) -> std::string {
+        if (std::isnan(value)) return "NaN" + unit;
+        if (std::isinf(value)) return (value > 0 ? "+Inf" : "-Inf") + unit;
+        
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(1) << value << unit;
+        return ss.str();
+    };
     
     if (isValid.distanceUpper1 || isValid.distanceUpper2) {
-        oss << "upper:[" << distanceUpper1 << "," << distanceUpper2 << "]mm, ";
+        oss << "upper:[" << formatValue(distanceUpper1, "") 
+            << "," << formatValue(distanceUpper2, "") << "]mm, ";
     }
-    if (isValid.distanceLower1 || isValid.distanceLower2) {
-        oss << "lower:[" << distanceLower1 << "," << distanceLower2 << "]mm, ";
-    }
+    
     if (isValid.temperature) {
-        oss << "temp:" << temperature << "°C, ";
+        oss << "temp:" << formatValue(temperature, "°C") << ", ";
     }
+    
     if (isValid.angle) {
-        oss << "angle:" << angle << "°, ";
+        oss << "angle:" << formatValue(angle, "°") << ", ";
     }
+    
     if (isValid.capacitance) {
-        oss << "cap:" << capacitance << "pF";
+        oss << "cap:" << formatValue(capacitance, "pF");
     }
+    
     oss << "}";
     return oss.str();
 }
 
-QString SensorData::toQString() const {
-    return QString::fromStdString(toString());
-}
-
 std::string SensorData::toCSV() const {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(2);
+    auto formatFloat = [](double value, int precision = 2) -> std::string {
+        if (std::isnan(value)) {
+            return "NaN";
+        } else if (std::isinf(value)) {
+            return value > 0 ? "Inf" : "-Inf";
+        } else {
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(precision) << value;
+            return ss.str();
+        }
+    };
     
-    // 时间戳
-    if (timestamp.isValid()) {
-        oss << timestamp.toString("yyyy-MM-dd HH:mm:ss.zzz").toStdString() << ",";
-    } else {
-        oss << ",";
-    }
+    oss << TimeUtils::formatTimestamp(timestamp) << ",";
     
-    // 原始数据
-    oss << distanceUpper1 << ",";
-    oss << distanceUpper2 << ",";
-    oss << distanceLower1 << ",";
-    oss << distanceLower2 << ",";
-    oss << temperature << ",";
-    oss << angle << ",";
-    oss << capacitance << ",";
+    oss << formatFloat(distanceUpper1) << ",";
+    oss << formatFloat(distanceUpper2) << ",";
+    oss << formatFloat(distanceLower1) << ",";
+    oss << formatFloat(distanceLower2) << ",";
+    oss << formatFloat(temperature) << ",";
+    oss << formatFloat(angle) << ",";
+    oss << formatFloat(capacitance) << ",";
     
-    // 计算值
-    oss << getAverageHeight() << ",";
-    oss << getCalculatedAngle() << ",";
-    oss << getAverageGroundDistance() << ",";
-    oss << getCalculatedUpperDistance();
+    oss << formatFloat(getAverageHeight()) << ",";
+    oss << formatFloat(getCalculatedAngle()) << ",";
+    oss << formatFloat(getAverageGroundDistance()) << ",";
+    oss << formatFloat(getCalculatedUpperDistance());
     
     return oss.str();
 }
@@ -249,10 +286,6 @@ std::string SensorData::getCSVHeader() {
            "Calculated_Upper_Distance(mm)";
 }
 
-bool SensorData::isInRange(double value, double min, double max) const {
-    return value >= min && value <= max;
-}
-
 std::vector<double> SensorData::parseNumbers(const std::string& str) const {
     std::vector<double> result;
     std::stringstream ss(str);
@@ -260,17 +293,68 @@ std::vector<double> SensorData::parseNumbers(const std::string& str) const {
     
     while (std::getline(ss, token, ',')) {
         try {
-            // 去除前后空格
-            token.erase(0, token.find_first_not_of(" \t"));
-            token.erase(token.find_last_not_of(" \t") + 1);
+            token.erase(0, token.find_first_not_of(" \t\r\n"));
+            token.erase(token.find_last_not_of(" \t\r\n") + 1);
             
-            double value = std::stod(token);
+            double value;
+            
+            std::transform(token.begin(), token.end(), token.begin(), ::tolower);
+            
+            if (token == "nan" || token == "nan.0") {
+                value = std::numeric_limits<double>::quiet_NaN();
+            } else if (token == "inf" || token == "+inf" || token == "inf.0") {
+                value = std::numeric_limits<double>::infinity();
+            } else if (token == "-inf" || token == "-inf.0") {
+                value = -std::numeric_limits<double>::infinity();
+            } else {
+                value = std::stod(token);
+            }
+            
             result.push_back(value);
+            
         } catch (const std::exception& e) {
-            // 解析失败，返回空向量
-            return std::vector<double>();
+            LOG_WARNING("Failed to parse value: " + token + ", using NaN");
+            result.push_back(std::numeric_limits<double>::quiet_NaN());
         }
     }
     
+    return result;
+}
+
+bool SensorData::hasSpecialValues() const {
+    return std::isnan(distanceUpper1) || std::isinf(distanceUpper1) ||
+           std::isnan(distanceUpper2) || std::isinf(distanceUpper2) ||
+           std::isnan(distanceLower1) || std::isinf(distanceLower1) ||
+           std::isnan(distanceLower2) || std::isinf(distanceLower2) ||
+           std::isnan(temperature) || std::isinf(temperature) ||
+           std::isnan(angle) || std::isinf(angle) ||
+           std::isnan(capacitance) || std::isinf(capacitance);
+}
+
+std::string SensorData::getSpecialValuesDescription() const {
+    std::vector<std::string> special;
+    
+    if (std::isnan(distanceUpper1)) special.push_back("D1:NaN");
+    if (std::isinf(distanceUpper1)) special.push_back("D1:Inf");
+    if (std::isnan(distanceUpper2)) special.push_back("D2:NaN");
+    if (std::isinf(distanceUpper2)) special.push_back("D2:Inf");
+    if (std::isnan(distanceLower1)) special.push_back("D3:NaN");
+    if (std::isinf(distanceLower1)) special.push_back("D3:Inf");
+    if (std::isnan(distanceLower2)) special.push_back("D4:NaN");
+    if (std::isinf(distanceLower2)) special.push_back("D4:Inf");
+    if (std::isnan(temperature)) special.push_back("Temp:NaN");
+    if (std::isinf(temperature)) special.push_back("Temp:Inf");
+    if (std::isnan(angle)) special.push_back("Angle:NaN");
+    if (std::isinf(angle)) special.push_back("Angle:Inf");
+    if (std::isnan(capacitance)) special.push_back("Cap:NaN");
+    if (std::isinf(capacitance)) special.push_back("Cap:Inf");
+    
+    if (special.empty()) return "None";
+    
+    std::string result;
+    for (size_t i = 0; i < special.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += special[i];
+    }
     return result;
 }

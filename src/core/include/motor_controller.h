@@ -102,19 +102,15 @@ public:
     bool executeBatch(const std::vector<MotorCommand>& commands);
     
     // 状态查询
-    MotorStatus getStatus() const { return status; }
+    MotorStatus getStatus() const { return status.load(); }
     bool isMoving() const { return status == MotorStatus::MOVING; }
     bool updateStatus(); // 主动查询MCU状态
     
     // 位置信息
-    double getCurrentHeight() const { return currentHeight; }
-    double getCurrentAngle() const { return currentAngle; }
-    double getTargetHeight() const { return targetHeight; }
-    double getTargetAngle() const { return targetAngle; }
-    
-    // 速度控制
-    void setSpeed(MotorSpeed speed);
-    MotorSpeed getSpeed() const { return speed; }
+    double getCurrentHeight() const { return currentHeight.load(); }
+    double getCurrentAngle() const { return currentAngle.load(); }
+    double getTargetHeight() const { return targetHeight.load(); }
+    double getTargetAngle() const { return targetAngle.load(); }
     
     // 配置
     void setCommandTimeout(int timeoutMs) { commandTimeout = timeoutMs; }
@@ -143,7 +139,6 @@ private:
     void notifyError(const std::string& message, ErrorCode code = ErrorCode::UNKNOWN);
     double calculateProgress() const;
     bool checkSafety(double height, double angle);
-    int64_t getCurrentTimestamp() const;
     
     // 成员变量
     std::shared_ptr<SerialInterface> serial;
@@ -156,13 +151,12 @@ private:
     std::atomic<double> targetHeight{0.0};
     std::atomic<double> targetAngle{0.0};
     
-    // 配置
-    std::atomic<MotorSpeed> speed{MotorSpeed::MEDIUM};
     std::atomic<int> commandTimeout{5000}; // 默认5秒超时
     
     // 线程控制
     std::unique_ptr<std::thread> monitorThread;
     std::atomic<bool> stopMonitoring{false};
+    std::mutex ioMutex; // serialize serial I/O
     mutable std::mutex mutex;
     
     // 回调

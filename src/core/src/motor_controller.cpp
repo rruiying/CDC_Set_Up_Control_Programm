@@ -1,18 +1,16 @@
-// src/core/src/motor_controller.cpp
 #include "../include/motor_controller.h"
+#include <mutex>
 #include "../include/safety_manager.h"
 #include "../../hardware/include/serial_interface.h"
 #include "../../hardware/include/command_protocol.h"
 #include "../../utils/include/logger.h"
+#include "../../utils/include/time_utils.h"
 #include <sstream>
 #include <cmath>
 
 MotorController::MotorController(std::shared_ptr<SerialInterface> serialInterface,
                                  std::shared_ptr<SafetyManager> safetyManager)
-    : m_serial(serialInterface), m_safety(safetyManager) {
-    
-    // 从系统配置加载速度设置
-    speed = SystemConfig::getInstance().getMotorSpeed();
+    : serial(serialInterface), safety(safetyManager) {
     
     LOG_INFO("MotorController initialized");
 }
@@ -60,13 +58,38 @@ bool MotorController::setAngle(double angle) {
 }
 
 bool MotorController::moveToPosition(double height, double angle) {
-    // 安全检查
+    Logger::getInstance().info("========== moveToPosition START ==========");
+    Logger::getInstance().infof("Target: %.1f mm, %.1f°", height, angle);
+
     if (!checkSafety(height, angle)) {
+        Logger::getInstance().error("Safety check failed");
         notifyError("Position out of safety limits", ErrorCode::OUT_OF_RANGE);
         return false;
     }
     
-    // 记录起始位置
+    std::string command = CommandProtocol::buildMoveCommand(height, angle);
+    Logger::getInstance().info("Built command: [" + command + "]");
+
+    std::string hex;
+    for (unsigned char c : command) {
+        char buf[8];
+        sprintf(buf, "%02X ", c);
+        hex += buf;
+    }
+    Logger::getInstance().info("Command hex: " + hex);
+
+    Logger::getInstance().info("Calling sendCommand...");
+    bool sendResult = sendCommand(command);
+    Logger::getInstance().info("sendCommand returned: " + std::string(sendResult ? "true" : "false"));
+
+    if (!sendResult) {
+        Logger::getInstance().error("Failed to send command");
+        return false;
+    }
+
+    Logger::getInstance().info("========== moveToPosition END ==========");
+    return true;
+    /*
     moveStartHeight = currentHeight.load();
     moveStartAngle = currentAngle.load();
     targetHeight = height;
@@ -83,6 +106,7 @@ bool MotorController::moveToPosition(double height, double angle) {
     
     // 等待移动完成
     return waitForCompletion();
+    */
 }
 
 bool MotorController::stop() {
@@ -130,26 +154,32 @@ bool MotorController::home() {
 }
 
 void MotorController::moveToPositionAsync(double height, double angle) {
-    // 安全检查
+    // Safety check
     if (!checkSafety(height, angle)) {
         notifyError("Position out of safety limits", ErrorCode::OUT_OF_RANGE);
         return;
     }
     
-    // 记录起始位置
+    // Record start position
     moveStartHeight = currentHeight.load();
     moveStartAngle = currentAngle.load();
     targetHeight = height;
     targetAngle = angle;
+
+    // Stop existing monitor thread if any
+    if (monitorThread && monitorThread->joinable()) {
+        stopMonitoring = true;
+        monitorThread->join();
+    }
     
-    // 在新线程中执行移动
-    std::thread([this, height, angle]() {
+    // Start new monitor thread
+    stopMonitoring = false;
+    monitorThread = std::make_unique<std::thread>([this, height, angle]() {
         std::string command = CommandProtocol::buildMoveCommand(height, angle);
         if (sendCommand(command)) {
-            // 启动监控
             monitorMovement();
         }
-    }).detach();
+    });
 }
 
 bool MotorController::waitForCompletion(int timeoutMs) {
@@ -245,12 +275,6 @@ bool MotorController::updateStatus() {
     return false;
 }
 
-void MotorController::setSpeed(MotorSpeed newSpeed) {
-    speed = newSpeed;
-    SystemConfig::getInstance().setMotorSpeed(newSpeed);
-    LOG_INFO_F("Motor speed set to %s", SystemConfig::getInstance().getMotorSpeedString().c_str());
-}
-
 void MotorController::setStatusCallback(StatusCallback callback) {
     std::lock_guard<std::mutex> lock(mutex);
     statusCallback = callback;
@@ -297,7 +321,7 @@ bool MotorController::sendCommand(const std::string& command) {
         notifyError("Serial port not open", ErrorCode::HARDWARE_ERROR);
         return false;
     }
-    
+    std::lock_guard<std::mutex> lock(ioMutex);
     return serial->sendCommand(command);
 }
 
@@ -307,7 +331,11 @@ bool MotorController::sendCommandAndWait(const std::string& command) {
         return false;
     }
     
-    std::string response = serial->sendAndReceive(command, commandTimeout);
+    std::string response;
+    {
+        std::lock_guard<std::mutex> lock(ioMutex);
+        response = serial->sendAndReceive(command, commandTimeout);
+    }
     
     if (response.empty()) {
         notifyError("Command timeout", ErrorCode::TIMEOUT);
@@ -360,35 +388,39 @@ void MotorController::notifyStatus(MotorStatus newStatus) {
         status = newStatus;
         LOG_INFO_F("Motor status changed to: %d", static_cast<int>(newStatus));
         
-        if (statusCallback) {
-            std::thread([this, newStatus]() {
-                statusCallback(newStatus);
-            }).detach();
+        StatusCallback cb;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            cb = statusCallback;
+        }
+        if (cb) {
+            cb(newStatus);
         }
     }
 }
 
 void MotorController::notifyProgress(double progress) {
-    if (progressCallback) {
-        std::thread([this, progress]() {
-            progressCallback(progress);
-        }).detach();
+    ProgressCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = progressCallback; }
+    if (cb) {
+        cb(progress);
     }
 }
 
 void MotorController::notifyError(const std::string& message, ErrorCode code) {
     {
         std::lock_guard<std::mutex> lock(mutex);
-        lastError = MotorError{getCurrentTimestamp(), message, code};
+        lastError = MotorError{TimeUtils::getCurrentTimestamp(), message, code};
     }
-    
     notifyStatus(MotorStatus::ERROR);
     LOG_ERROR("Motor error: " + message);
-    
-    if (errorCallback) {
-        std::thread([this, error = lastError]() {
-            errorCallback(error);
-        }).detach();
+    ErrorCallback cb;
+    { 
+        std::lock_guard<std::mutex> lock(mutex); 
+        cb = errorCallback; 
+    }
+    if (cb) {
+        cb(lastError);
     }
 }
 
@@ -430,11 +462,4 @@ bool MotorController::checkSafety(double height, double angle) {
     
     // 也使用系统配置进行检查
     return SystemConfig::getInstance().isPositionValid(height, angle);
-}
-
-int64_t MotorController::getCurrentTimestamp() const {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto duration = now.time_since_epoch();
-    return duration_cast<milliseconds>(duration).count();
 }

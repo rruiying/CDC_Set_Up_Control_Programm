@@ -1,11 +1,11 @@
-# src/models/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
 set(MODELS_HEADERS
     include/device_info.h
     include/measurement_data.h
     include/sensor_data.h
     include/system_config.h
+    include/data_statistics.h
+    include/physics_constants.h
+    include/physics_calculator.h
 )
 
 set(MODELS_SOURCES
@@ -13,6 +13,7 @@ set(MODELS_SOURCES
     src/measurement_data.cpp
     src/sensor_data.cpp
     src/system_config.cpp
+    src/physics_calculator.cpp
 )
 
 add_library(models_lib STATIC
@@ -20,12 +21,12 @@ add_library(models_lib STATIC
     ${MODELS_HEADERS}
 )
 
-target_include_directories(models_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+target_include_directories(models_lib
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(models_lib PUBLIC
-    Qt6::Core
+    utils_lib  # 只依赖utils
 )
 
-set_target_properties(models_lib PROPERTIES AUTOMOC ON)
+target_compile_features(models_lib PUBLIC cxx_std_17)

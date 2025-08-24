@@ -26,15 +26,6 @@ enum class ConnectionStatus {
     ERROR
 };
 
-/**
- * @brief 设备信息类
- * 
- * 管理单个设备的信息，包括：
- * - 基本信息（名称、端口、波特率）
- * - 连接状态和统计
- * - 错误记录
- * - 活动时间跟踪
- */
 class DeviceInfo {
 public:
     /**

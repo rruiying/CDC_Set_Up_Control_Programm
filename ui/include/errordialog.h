@@ -1,4 +1,3 @@
-// ui/include/errordialog.h
 #ifndef ERRORDIALOG_H
 #define ERRORDIALOG_H
 
@@ -11,16 +10,6 @@
 #include <QHBoxLayout>
 #include <QIcon>
 
-/**
- * @brief 错误对话框类
- * 
- * 提供统一的错误显示机制：
- * - 模态对话框，阻塞主窗口
- * - 自动居中显示
- * - 原生Windows风格
- * - 集成Logger系统记录详细错误信息
- * - 用户友好的错误消息显示
- */
 class ErrorDialog : public QDialog
 {
     Q_OBJECT

@@ -1,6 +1,3 @@
-# tests/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
 # 查找GTest（如果使用Google Test）
 find_package(GTest)
 

@@ -1,4 +1,3 @@
-// src/core/include/data_recorder.h
 #ifndef DATA_RECORDER_H
 #define DATA_RECORDER_H
 
@@ -10,33 +9,18 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <iomanip>
+#include <ctime>
 #include "../../models/include/measurement_data.h"
 #include "../../models/include/data_statistics.h"
 
-/**
- * @brief 数据记录器类
- * 
- * 负责记录和管理测量数据：
- * - 数据存储和检索
- * - CSV导入/导出
- * - 自动保存
- * - 数据过滤和统计
- * - 内存管理
- * - 数据备份和恢复
- */
 class DataRecorder {
 public:
-    /**
-     * @brief 构造函数
-     */
+
     DataRecorder();
     
-    /**
-     * @brief 析构函数
-     */
     ~DataRecorder();
     
-    // 回调函数类型
     using DataChangeCallback = std::function<void(int recordCount)>;
     using ExportProgressCallback = std::function<void(int current, int total)>;
     
@@ -45,7 +29,7 @@ public:
     void recordCurrentState(double setHeight, double setAngle, const SensorData& sensorData);
     
     // 数据访问
-    bool hasData() const { return !measurements.empty(); }
+    bool hasData() const { std::lock_guard<std::mutex> lock(mutex); return !measurements.empty(); }
     int getRecordCount() const;
     MeasurementData getLatestMeasurement() const;
     std::vector<MeasurementData> getAllMeasurements() const;
@@ -68,9 +52,6 @@ public:
     
     // 文件操作
     bool exportToCSV(const std::string& filename) const;
-    bool exportToCSV(const std::string& filename, 
-                     const std::chrono::system_clock::time_point& start,
-                     const std::chrono::system_clock::time_point& end) const;
     bool importFromCSV(const std::string& filename);
     
     // 自动保存

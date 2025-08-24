@@ -1,11 +1,11 @@
-// src/hardware/src/serial_interface.cpp
 #include "../include/serial_interface.h"
 #include "../../utils/include/logger.h"
 #include <chrono>
 #include <algorithm>
 #include <cstring>
+#include <thread>
+#include <queue>
 
-// 平台相关头文件
 #ifdef _WIN32
     #include <windows.h>
     #include <setupapi.h>
@@ -135,11 +135,13 @@ bool SerialInterface::open(const std::string& portName, int baudRate) {
 }
 
 bool SerialInterface::open(const std::string& portName, const SerialPortConfig& config) {
-    std::lock_guard<std::mutex> lock(mutex);
-    
-    // 如果已经打开，先关闭
-    if (connected) {
-        platformClose();
+        std::lock_guard<std::mutex> lock(mutex);
+        if (connected) {
+        connected = false;  
+        if (!mockMode && pImpl) {
+            pImpl->close();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
     
     currentPort = portName;
@@ -148,24 +150,44 @@ bool SerialInterface::open(const std::string& portName, const SerialPortConfig& 
     bool success = false;
     
     if (mockMode) {
-        // 模拟模式
         success = true;
-        LOG_INFO_F("Mock serial port opened: %s @ %d baud", portName.c_str(), config.baudRate);
+        LOG_INFO_F("Mock serial port opened: %s @ %d baud", 
+                portName.c_str(), config.baudRate);
     } else {
-        // 真实模式
-        success = platformOpen(portName, config);
+        success = pImpl->open(portName, config);
     }
-    
     if (success) {
         connected = true;
-        notifyConnection(true);
-        LOG_INFO_F("Serial port opened: %s @ %d baud", portName.c_str(), config.baudRate);
-        
-        // 启动自动重连线程
-        if (autoReconnect && !reconnectThreadPtr) {
-            stopReconnect = false;
-            reconnectThreadPtr = std::make_unique<std::thread>(&SerialInterface::reconnectThread, this);
+        #ifdef _WIN32
+        if (pImpl && pImpl->handle != INVALID_HANDLE_VALUE) {
+            PurgeComm(pImpl->handle, PURGE_RXCLEAR | PURGE_TXCLEAR);
+            
+            char dummy[1024];
+            DWORD bytesRead;
+            DWORD totalBytes = 0;
+            do {
+                if (ReadFile(pImpl->handle, dummy, sizeof(dummy), &bytesRead, NULL)) {
+                    totalBytes += bytesRead;
+                } else {
+                    break;
+                }
+            } while (bytesRead > 0);
+            
+            if (totalBytes > 0) {
+                Logger::getInstance().info("Cleared " + std::to_string(totalBytes) + " bytes from buffer");
+            }
         }
+        #endif
+        LOG_INFO_F("Serial port opened: %s @ %d baud", 
+                   portName.c_str(), config.baudRate);
+        
+        //notifyConnection(true);
+        
+        //if (autoReconnect && !reconnectThreadPtr) {
+        //   stopReconnect = false;
+        //    reconnectThreadPtr = std::make_unique<std::thread>(
+        //        &SerialInterface::reconnectThread, this);
+        //}
     } else {
         currentPort.clear();
         LOG_ERROR_F("Failed to open serial port: %s", portName.c_str());
@@ -175,41 +197,50 @@ bool SerialInterface::open(const std::string& portName, const SerialPortConfig& 
 }
 
 void SerialInterface::close() {
-    std::lock_guard<std::mutex> lock(mutex);
-    
-    if (connected) {
-        connected = false;
-        
-        if (!mockMode) {
-            platformClose();
+    bool needNotify = false;
+    std::string port;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (connected) {
+            connected = false;
+            if (!mockMode) platformClose();
+            needNotify = true;
+            port = currentPort;
+            LOG_INFO_F("Serial port closed: %s", port.c_str());
+            currentPort.clear();
         }
-        
-        notifyConnection(false);
-        LOG_INFO_F("Serial port closed: %s", currentPort.c_str());
-        currentPort.clear();
     }
+    if (needNotify) notifyConnection(false);
 }
 
 bool SerialInterface::isOpen() const {
+    std::lock_guard<std::mutex> lock(mutex);
     return connected;
 }
 
 bool SerialInterface::sendCommand(const std::string& command) {
+    Logger::getInstance().info("SerialInterface::sendCommand called");
+    Logger::getInstance().info("Command to send: [" + command + "]");
+    Logger::getInstance().info("Command length: " + std::to_string(command.length()));
     if (!connected) {
         LOG_ERROR("Cannot send command: port not open");
         return false;
     }
     
     std::vector<uint8_t> data(command.begin(), command.end());
-    
-    if (mockMode) {
-        // 模拟模式：记录发送的命令
-        pImpl->mockSentCommands.push_back(command);
-        LOG_INFO_F("Mock TX: %s", command.c_str());
-        return true;
+
+    std::string hex;
+    for (uint8_t b : data) {
+        char buf[8];
+        sprintf(buf, "%02X ", b);
+        hex += buf;
     }
+    Logger::getInstance().info("Sending bytes: " + hex);
     
-    return sendData(data);
+    bool result = sendData(data);
+    Logger::getInstance().info("sendData returned: " + std::string(result ? "true" : "false"));
+    
+    return result;
 }
 
 bool SerialInterface::sendData(const std::vector<uint8_t>& data) {
@@ -258,7 +289,77 @@ std::string SerialInterface::sendAndReceive(const std::string& command, int time
         return "";
     }
     
-    return readLine(timeoutMs);
+    std::string fullResponse;
+    auto startTime = std::chrono::steady_clock::now();
+    
+    while (true) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        if (elapsed >= timeoutMs) {
+            Logger::getInstance().warning("Timeout waiting for complete response");
+            break;
+        }
+        
+        int available = bytesAvailable();
+        if (available > 0) {
+            std::vector<uint8_t> bytes = readBytes(available, 100);
+            if (!bytes.empty()) {
+                std::string chunk(bytes.begin(), bytes.end());
+                fullResponse += chunk;
+                
+                Logger::getInstance().error("!!! " + std::to_string(bytes.size()) + " bytes available !!!");
+                Logger::getInstance().error("!!! RAW DATA: [" + chunk + "] !!!");
+                
+                std::string hex;
+                for (uint8_t b : bytes) {
+                    char buf[8];
+                    sprintf(buf, "%02X ", b);
+                    hex += buf;
+                }
+                Logger::getInstance().error("!!! HEX: " + hex + " !!!");
+            }
+        }
+        
+        if (fullResponse.find("SENSORS:") != std::string::npos) {
+            size_t lastSensors = fullResponse.rfind("SENSORS:");
+            if (lastSensors != std::string::npos) {
+                size_t endLine = fullResponse.find('\n', lastSensors);
+                if (endLine != std::string::npos) {
+                    std::string sensorLine = fullResponse.substr(
+                        lastSensors, endLine - lastSensors);
+                    
+                    int commaCount = std::count(
+                        sensorLine.begin(), sensorLine.end(), ',');
+                    if (commaCount == 6) {
+                        Logger::getInstance().info("Complete SENSORS response received: " + sensorLine);
+                        break;
+                    }
+                }
+            }
+        }
+        else if (fullResponse.find("OK\r\n") != std::string::npos ||
+                 fullResponse.find("OK\n") != std::string::npos) {
+            break;
+        }
+        else if (fullResponse.find("ERROR:") != std::string::npos) {
+            size_t errorPos = fullResponse.find("ERROR:");
+            size_t endLine = fullResponse.find('\n', errorPos);
+            if (endLine != std::string::npos) {
+                break;
+            }
+        }
+        else if (fullResponse.find("STATUS:") != std::string::npos) {
+            size_t statusPos = fullResponse.find("STATUS:");
+            size_t endLine = fullResponse.find('\n', statusPos);
+            if (endLine != std::string::npos) {
+                break;
+            }
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    return fullResponse;
 }
 
 void SerialInterface::flushBuffers() {
@@ -296,21 +397,21 @@ void SerialInterface::setErrorCallback(ErrorCallback callback) {
 
 // 内部方法实现
 void SerialInterface::notifyConnection(bool connected) {
-    if (connectionCallback) {
-        connectionCallback(connected);
-    }
+    ConnectionCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = connectionCallback; }
+    if (cb) cb(connected);
 }
 
 void SerialInterface::notifyDataReceived(const std::string& data) {
-    if (dataReceivedCallback) {
-        dataReceivedCallback(data);
-    }
+    DataReceivedCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = dataReceivedCallback; }
+    if (cb) cb(data);
 }
 
 void SerialInterface::notifyError(const std::string& error) {
-    if (errorCallback) {
-        errorCallback(error);
-    }
+    ErrorCallback cb;
+    { std::lock_guard<std::mutex> lock(mutex); cb = errorCallback; }
+    if (cb) cb(error);
 }
 
 std::string SerialInterface::readUntilTerminator(const std::string& terminator, int timeoutMs) {
@@ -326,7 +427,7 @@ std::string SerialInterface::readUntilTerminator(const std::string& terminator, 
         }
         
         // 读取一个字节
-        auto bytes = readBytes(1, std::min(10, timeoutMs - static_cast<int>(elapsed)));
+        auto bytes = readBytes(1, (std::min)(10, timeoutMs - static_cast<int>(elapsed)));
         if (!bytes.empty()) {
             buffer += static_cast<char>(bytes[0]);
             
@@ -335,7 +436,7 @@ std::string SerialInterface::readUntilTerminator(const std::string& terminator, 
                 buffer.substr(buffer.size() - terminator.size()) == terminator) {
                 
                 // 通知数据接收
-                notifyDataReceived(buffer);
+                //notifyDataReceived(buffer);
                 return buffer;
             }
         }
@@ -427,13 +528,13 @@ bool SerialInterface::Impl::open(const std::string& portName, const SerialPortCo
     
     // 设置超时
     COMMTIMEOUTS timeouts = {0};
-    timeouts.ReadIntervalTimeout = 50;
-    timeouts.ReadTotalTimeoutConstant = config.readTimeout;
-    timeouts.ReadTotalTimeoutMultiplier = 10;
-    timeouts.WriteTotalTimeoutConstant = config.writeTimeout;
-    timeouts.WriteTotalTimeoutMultiplier = 10;
-    
+    timeouts.ReadIntervalTimeout = 1;
+    timeouts.ReadTotalTimeoutConstant = 50;
+    timeouts.ReadTotalTimeoutMultiplier = 1;
+    timeouts.WriteTotalTimeoutConstant = 50;
+    timeouts.WriteTotalTimeoutMultiplier = 1;
     SetCommTimeouts(handle, &timeouts);
+    PurgeComm(handle, PURGE_RXCLEAR | PURGE_TXCLEAR);
     
     return true;
 #else

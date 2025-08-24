@@ -1,5 +1,5 @@
-// src/core/src/data_recorder.cpp
 #include "../include/data_recorder.h"
+#include <mutex>
 #include "../../models/include/system_config.h"
 #include "../../utils/include/logger.h"
 #include <fstream>
@@ -117,11 +117,13 @@ void DataRecorder::clear() {
 }
 
 void DataRecorder::setMaxRecords(size_t max) {
+    std::lock_guard<std::mutex> lock(mutex);
     maxRecords = max;
     enforceMaxRecords();
 }
 
 void DataRecorder::setMemoryLimit(size_t bytes) {
+    std::lock_guard<std::mutex> lock(mutex);
     memoryLimit = bytes;
     enforceMemoryLimit();
 }
@@ -131,35 +133,11 @@ size_t DataRecorder::getEstimatedMemoryUsage() const {
 }
 
 bool DataRecorder::exportToCSV(const std::string& filename) const {
-    std::lock_guard<std::mutex> lock(mutex);
-    
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        LOG_ERROR("Failed to open file for export: " + filename);
-        return false;
+    std::vector<MeasurementData> dataCopy;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        dataCopy.assign(measurements.begin(), measurements.end());
     }
-    
-    // 写入头部
-    file << MeasurementData::getCSVHeader() << "\n";
-    
-    // 写入数据
-    int current = 0;
-    for (const auto& measurement : measurements) {
-        file << measurement.toCSV() << "\n";
-        current++;
-        notifyExportProgress(current, measurements.size());
-    }
-    
-    file.close();
-    LOG_INFO_F("Exported %zu measurements to %s", measurements.size(), filename.c_str());
-    return true;
-}
-
-bool DataRecorder::exportToCSV(const std::string& filename,
-                               const std::chrono::system_clock::time_point& start,
-                               const std::chrono::system_clock::time_point& end) const {
-    
-    auto filteredData = getMeasurementsInTimeRange(start, end);
     
     std::ofstream file(filename);
     if (!file.is_open()) {
@@ -168,16 +146,14 @@ bool DataRecorder::exportToCSV(const std::string& filename,
     }
     
     file << MeasurementData::getCSVHeader() << "\n";
-    
-    int current = 0;
-    for (const auto& measurement : filteredData) {
-        file << measurement.toCSV() << "\n";
-        current++;
-        notifyExportProgress(current, filteredData.size());
+    int total = static_cast<int>(dataCopy.size());
+    for (int i = 0; i < total; ++i) {
+        file << dataCopy[i].toCSV() << "\n";
+        notifyExportProgress(i+1, total);
     }
     
     file.close();
-    LOG_INFO_F("Exported %zu measurements to %s", filteredData.size(), filename.c_str());
+    LOG_INFO_F("Exported %d measurements to %s", total, filename.c_str());
     return true;
 }
 
@@ -188,22 +164,14 @@ bool DataRecorder::importFromCSV(const std::string& filename) {
         return false;
     }
     
-    // 清空现有数据
     clear();
     
     std::string line;
-    // 跳过头部
     std::getline(file, line);
     
-    // 读取数据行
     while (std::getline(file, line)) {
         if (line.empty()) continue;
         
-        // 这里需要实现CSV解析逻辑
-        // 简化版本：假设数据格式正确
-        // 实际应用中应该使用更健壮的CSV解析库
-        
-        // 创建测试数据（实际应该从CSV解析）
         SensorData sensorData;
         MeasurementData measurement(0.0, 0.0, sensorData);
         
@@ -223,7 +191,6 @@ void DataRecorder::setAutoSave(bool enable, const std::string& filename) {
         autoSaveFilename = filename.empty() ? generateTimestampFilename("autosave") : filename;
         stopAutoSave = false;
         
-        // 启动自动保存线程
         m_autoSaveThread = std::make_unique<std::thread>(&DataRecorder::autoSaveThreadFunction, this);
         LOG_INFO("Auto-save enabled: " + autoSaveFilename);
         
@@ -289,12 +256,10 @@ DataStatistics DataRecorder::getStatistics() const {
         return stats;
     }
     
-    // 使用新的命名方式
-    stats.dataCount = measurements.size();  // 原来是 stats.totalRecords
+    stats.dataCount = measurements.size();
     stats.firstRecordTime = measurements.front().getTimestamp();
     stats.lastRecordTime = measurements.back().getTimestamp();
-    
-    // 初始化最小/最大值
+
     stats.minHeight = measurements.front().getSetHeight();
     stats.maxHeight = stats.minHeight;
     stats.minAngle = measurements.front().getSetAngle();
@@ -323,11 +288,9 @@ DataStatistics DataRecorder::getStatistics() const {
         stats.maxCapacitance = std::max(stats.maxCapacitance, cap);
     }
     
-    // 使用新的命名方式
-    stats.meanHeight = sumHeight / stats.dataCount;  // 原来是 stats.averageHeight
-    stats.meanAngle = sumAngle / stats.dataCount;    // 原来是 stats.averageAngle
-    stats.meanCapacitance = sumCapacitance / stats.dataCount;  // 原来是 stats.averageCapacitance
-    
+    stats.meanHeight = sumHeight / stats.dataCount; 
+    stats.meanAngle = sumAngle / stats.dataCount; 
+    stats.meanCapacitance = sumCapacitance / stats.dataCount;
     cachedStatistics = stats;
     statisticsValid = true;
     
@@ -335,11 +298,13 @@ DataStatistics DataRecorder::getStatistics() const {
 }
 
 void DataRecorder::setDataChangeCallback(DataChangeCallback callback) {
-    dataChangeCallback = callback;
+    std::lock_guard<std::mutex> lock(mutex);
+    dataChangeCallback = std::move(callback);
 }
 
 void DataRecorder::setExportProgressCallback(ExportProgressCallback callback) {
-    exportProgressCallback = callback;
+    std::lock_guard<std::mutex> lock(mutex);
+    exportProgressCallback = std::move(callback);
 }
 
 std::string DataRecorder::getDefaultFilename() const {
@@ -349,16 +314,20 @@ std::string DataRecorder::getDefaultFilename() const {
 std::string DataRecorder::generateTimestampFilename(const std::string& prefix) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
-    
+
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &time_t);
+#else
+    localtime_r(&time_t, &tm);
+#endif
     std::stringstream ss;
     ss << prefix << "_";
-    ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+    ss << std::put_time(&tm, "%Y%m%d_%H%M%S");
     ss << ".csv";
     
     return ss.str();
 }
-
-// 私有方法实现
 
 void DataRecorder::enforceMaxRecords() {
     while (measurements.size() > maxRecords) {
@@ -386,7 +355,6 @@ void DataRecorder::autoSaveThreadFunction() {
             break;
         }
         
-        // 执行自动保存
         if (hasData()) {
             exportToCSV(autoSaveFilename);
             lastAutoSave = std::chrono::system_clock::now();
@@ -397,17 +365,25 @@ void DataRecorder::autoSaveThreadFunction() {
 }
 
 void DataRecorder::notifyDataChange() {
-    if (dataChangeCallback) {
+    DataChangeCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        cb = dataChangeCallback;
+    }
+    if (cb) {
         int count = getRecordCount();
-        std::thread([this, count]() {
-            dataChangeCallback(count);
-        }).detach();
+        cb(count);
     }
 }
 
 void DataRecorder::notifyExportProgress(int current, int total) const {
-    if (exportProgressCallback) {
-        const_cast<DataRecorder*>(this)->exportProgressCallback(current, total);
+    ExportProgressCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        cb = exportProgressCallback;
+    }
+    if (cb) {
+        cb(current, total);
     }
 }
 
@@ -420,7 +396,5 @@ bool DataRecorder::shouldCompressRecord(const MeasurementData& existing,
 }
 
 size_t DataRecorder::estimateRecordSize(const MeasurementData& record) const {
-    // 粗略估计每条记录的内存占用
-    // MeasurementData基本大小 + SensorData大小 + 字符串等
     return sizeof(MeasurementData) + sizeof(SensorData) + 100;
 }

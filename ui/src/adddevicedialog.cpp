@@ -1,10 +1,9 @@
-// ui/src/adddevicedialog.cpp
 #include "../include/adddevicedialog.h"
-#include "../ui_adddevicedialog.h"
 #include "../../src/models/include/device_info.h"
 #include "../../src/hardware/include/serial_interface.h"
 #include "../../src/utils/include/logger.h"
 #include "../include/errordialog.h"
+#include "ui_adddevicedialog.h"
 
 #include <QLineEdit>
 #include <QComboBox>
@@ -16,6 +15,10 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QDateTime> 
+
+QStringList AddDeviceDialog::cachedPorts;
+QDateTime AddDeviceDialog::lastScanTime;
 
 AddDeviceDialog::AddDeviceDialog(QWidget *parent, const QStringList& existingDevices, 
                                  const QList<DeviceInfo>& connectedDevices)
@@ -33,13 +36,13 @@ AddDeviceDialog::AddDeviceDialog(QWidget *parent, const QStringList& existingDev
     
     // 设置窗口属性
     setModal(true);
-    setWindowTitle("添加设备");
+    setWindowTitle("add device");
     setFixedSize(400, 300);
     
     // 初始化定时器
     refreshTimer = new QTimer(this);
     refreshTimer->setSingleShot(false);
-    refreshTimer->setInterval(PORT_REFRESH_INTERVAL);
+    refreshTimer->setInterval(5000);
     connect(refreshTimer, &QTimer::timeout, this, &AddDeviceDialog::onRefreshTimer);
     
     // 设置连接
@@ -53,10 +56,33 @@ AddDeviceDialog::AddDeviceDialog(QWidget *parent, const QStringList& existingDev
 //    ui->lineEdit->setValidator(new QRegularExpressionValidator(nameRegex, this));
     
     // 初始状态验证
-    validateInput();
+    //validateInput();
     
     logUserOperation("Open add device dialog");
 }
+
+QStringList AddDeviceDialog::getAvailablePortNames()
+{
+    if (lastScanTime.isValid() && 
+        lastScanTime.msecsTo(QDateTime::currentDateTime()) < CACHE_VALIDITY_MS) {
+        return cachedPorts;
+    }
+    
+    QStringList portNames;
+    auto ports = SerialInterface::getAvailablePorts();
+    
+    for (const auto& port : ports) {
+        if (port.isAvailable) {
+            portNames << QString::fromStdString(port.portName);
+        }
+    }
+    
+    cachedPorts = portNames;
+    lastScanTime = QDateTime::currentDateTime();
+    
+    return portNames;
+}
+
 
 AddDeviceDialog::~AddDeviceDialog()
 {
@@ -97,50 +123,38 @@ bool AddDeviceDialog::hasAvailablePorts()
     return false;
 }
 
-QStringList AddDeviceDialog::getAvailablePortNames()
-{
-    QStringList portNames;
-    auto ports = SerialInterface::getAvailablePorts();
-    
-    for (const auto& port : ports) {
-        if (port.isAvailable) {
-            portNames << QString::fromStdString(port.portName);
-        }
-    }
-    
-    return portNames;
-}
-
 void AddDeviceDialog::showEvent(QShowEvent* event)
 {
     QDialog::showEvent(event);
     
     if (!isInitialized) {
-        // 第一次显示时初始化端口列表
-        initializePortList();
-        
-        // 启动定时器定期刷新端口
-        refreshTimer->start();
-        
-        isInitialized = true;
+        ui->comboBox->clear();
+        ui->comboBox->addItem("Loading ports...", "");
+        ui->comboBox->setEnabled(false);
+
+        QTimer::singleShot(100, this, [this]() {
+            initializePortList();
+            ui->comboBox->setEnabled(true);
+            
+            refreshTimer->start();
+            
+            isInitialized = true;
+            validateInput();
+        });
     }
 }
 
 void AddDeviceDialog::setupConnections()
 {
-    // 设备名称变化
     connect(ui->lineEdit, &QLineEdit::textChanged, 
             this, &AddDeviceDialog::onDeviceNameChanged);
     
-    // 端口选择变化
     connect(ui->comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &AddDeviceDialog::onPortSelectionChanged);
     
-    // 波特率变化
     connect(ui->comboBox_2, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &AddDeviceDialog::onBaudRateChanged);
-    
-    // 按钮连接
+
     connect(ui->buttonBox, &QDialogButtonBox::accepted, this, &AddDeviceDialog::accept);
     connect(ui->buttonBox, &QDialogButtonBox::rejected, this, &AddDeviceDialog::reject);
 }
@@ -150,7 +164,6 @@ void AddDeviceDialog::initializePortList()
     ui->comboBox->clear();
     availablePorts.clear();
     
-    // 获取可用端口
     auto ports = SerialInterface::getAvailablePorts();
     for (const auto& portInfo : ports) {
         if (!portInfo.isAvailable) {
@@ -165,37 +178,32 @@ void AddDeviceDialog::initializePortList()
             displayText += QString(" (%1)").arg(description);
         }
         
-        // 检查端口是否被当前应用占用
         if (isPortOccupiedByApp(portName)) {
             QString deviceName = getDeviceNameByPort(portName);
-            displayText += QString(" [被 '%1' 占用]").arg(deviceName);
-            ui->comboBox->addItem(displayText, ""); // 数据设为空表示不可用
+            displayText += QString(" [is used by '%1' ]").arg(deviceName);
+            ui->comboBox->addItem(displayText, ""); 
         } else {
             ui->comboBox->addItem(displayText, portName);
             availablePorts << portName;
         }
     }
     
-    // 如果没有可用端口，显示提示
     if (availablePorts.isEmpty()) {
-        ui->comboBox->addItem("未找到可用端口", "");
+        ui->comboBox->addItem("No available ports", "");
         logUserOperation("No available ports found");
     } else {
         logUserOperation(QString("Found %1 available ports").arg(availablePorts.size()));
     }
     
-    // 验证端口选择
     validateInput();
 }
 
 void AddDeviceDialog::initializeBaudRateList()
 {
-    // UI文件中已经预设了波特率选项，这里确保正确性
     if (ui->comboBox_2->count() == 0) {
         ui->comboBox_2->addItems({"9600", "19200", "38400", "57600", "115200"});
     }
     
-    // 默认选择115200
     int index = ui->comboBox_2->findText("115200");
     if (index >= 0) {
         ui->comboBox_2->setCurrentIndex(index);
@@ -213,7 +221,6 @@ void AddDeviceDialog::onPortSelectionChanged(int index)
     Q_UNUSED(index)
     validateInput();
     
-    // 记录端口选择
     if (ui->comboBox->currentData().isValid()) {
         QString selectedPort = ui->comboBox->currentData().toString();
         logUserOperation(QString("Selected port: %1").arg(selectedPort));
@@ -232,18 +239,13 @@ void AddDeviceDialog::onBaudRateChanged(int index)
 
 void AddDeviceDialog::refreshPortList()
 {
-    // 保存当前选择
     QString currentPort = ui->comboBox->currentData().toString();
     
-    // 重新扫描端口
     QStringList newPorts = getAvailablePortNames();
     
-    // 检查是否有变化
     if (newPorts != availablePorts) {
-        // 更新端口列表
         initializePortList();
         
-        // 尝试恢复之前的选择
         if (!currentPort.isEmpty()) {
             int index = ui->comboBox->findData(currentPort);
             if (index >= 0) {
@@ -255,55 +257,36 @@ void AddDeviceDialog::refreshPortList()
     }
 }
 
-void AddDeviceDialog::onRefreshTimer()
-{
+void AddDeviceDialog::onRefreshTimer() {
     refreshPortList();
 }
 
-//void AddDeviceDialog::validateInput()
-//{
-//    clearValidationError();
-//
-//    // 验证设备名称
-//    auto nameValidation = validateDeviceName(ui->lineEdit->text());
-//    deviceNameValid = nameValidation.first;
-//
-//```
-    // 验证端口选择
-//    auto portValidation = validatePortSelection();
-//    portSelectionValid = portValidation.first;
-    
-    // 波特率始终有效（从预定义列表选择）
-//    baudRateValid = (ui->comboBox_2->currentIndex() >= 0);
-    
-    // 显示第一个错误
-//    if (!deviceNameValid) {
-//        showValidationError(nameValidation.second);
-//    } else if (!portSelectionValid) {
-//        showValidationError(portValidation.second);
-//    }
-    
-    // 更新OK按钮状态
-//    updateOkButtonState();
-//}
-
-void AddDeviceDialog::validateInput()
-{
-    // 只保留最基本的逻辑
-    deviceNameValid = !ui->lineEdit->text().trimmed().isEmpty();
-    portSelectionValid = true;
-    baudRateValid = true;
-    
-    // 暂时注释掉可能有问题的函数调用
-    // clearValidationError();
-    // showValidationError(...);
-    // updateOkButtonState();
-    
-    // 手动设置OK按钮状态
-    bool allValid = deviceNameValid && portSelectionValid && baudRateValid;
-    if (ui->buttonBox) {
-        ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(allValid);
+void AddDeviceDialog::validateInput() {
+    if (!isInitialized) {
+        return;
     }
+    clearValidationError();
+
+    // Validate device name
+    auto nameValidation = validateDeviceName(ui->lineEdit->text());
+    deviceNameValid = nameValidation.first;
+    
+    // Validate port selection
+    auto portValidation = validatePortSelection();
+    portSelectionValid = portValidation.first;
+    
+    // Baud rate is always valid (selected from predefined list)
+    baudRateValid = (ui->comboBox_2->currentIndex() >= 0);
+    
+    // Show first error
+    if (!deviceNameValid) {
+        showValidationError(nameValidation.second);
+    } else if (!portSelectionValid) {
+        showValidationError(portValidation.second);
+    }
+    
+    // Update OK button state
+    updateOkButtonState();
 }
 
 QPair<bool, QString> AddDeviceDialog::validateDeviceName(const QString& name) const
@@ -336,42 +319,24 @@ QPair<bool, QString> AddDeviceDialog::validateDeviceName(const QString& name) co
 
 QPair<bool, QString> AddDeviceDialog::validatePortSelection() const
 {
-    // 检查是否有可用端口
     if (availablePorts.isEmpty()) {
-        return {false, "未找到可用的串口设备"};
+        return {false, "no available ports"};
     }
     
-    // 检查是否选择了端口
     if (ui->comboBox->currentIndex() < 0) {
-        return {false, "请选择一个串口"};
+        return {false, "please select a serial port"};
     }
     
     QString selectedPort = ui->comboBox->currentData().toString();
     if (selectedPort.isEmpty()) {
-        return {false, "选择的端口无效或已被占用"};
+        return {false, "the selected port is invalid or occupied"};
     }
     
-    // 检查端口是否被当前应用占用
     if (isPortOccupiedByApp(selectedPort)) {
         QString deviceName = getDeviceNameByPort(selectedPort);
-        return {false, QString("端口被设备 '%1' 占用").arg(deviceName)};
+        return {false, QString("the port is occupied by device '%1'").arg(deviceName)};
     }
-    
-    // 实际尝试打开端口验证
-    try {
-        SerialInterface testInterface;
-        if (!testInterface.open(selectedPort.toStdString(), 115200)) {
-            return {false, "端口被其他程序占用或无法访问"};
-        }
-        // 立即关闭测试连接
-        testInterface.close();
-        
-        return {true, ""};
-    } catch (const std::exception& e) {
-        return {false, QString("端口测试失败: %1").arg(e.what())};
-    } catch (...) {
-        return {false, "端口测试失败: 未知错误"};
-    }
+    return {true, ""};
 }
 
 bool AddDeviceDialog::isPortOccupiedByApp(const QString& portName) const
@@ -409,9 +374,11 @@ void AddDeviceDialog::showValidationError(const QString& message)
 {
     if (message != lastValidationError) {
         lastValidationError = message;
-        // 可以在状态栏或标签中显示错误消息
-        // 这里记录到日志
-        Logger::getInstance().warning("Validation error: " + message.toStdString());
+        // Could show error in status bar or label
+        // For now, log to logger
+        if (!message.isEmpty()) {
+            Logger::getInstance().warning("Validation error: " + message.toStdString());
+        }
     }
 }
 
@@ -426,11 +393,11 @@ void AddDeviceDialog::accept()
     validateInput();
     
     if (!deviceNameValid || !portSelectionValid || !baudRateValid) {
-        QString errorMsg = "请检查输入信息：\n";
-        if (!deviceNameValid) errorMsg += "- 设备名称无效\n";
-        if (!portSelectionValid) errorMsg += "- 串口选择无效\n";
-        if (!baudRateValid) errorMsg += "- 波特率选择无效\n";
-        
+        QString errorMsg = "Please check the input information:\n";
+        if (!deviceNameValid) errorMsg += "- Invalid device name\n";
+        if (!portSelectionValid) errorMsg += "- Invalid serial port selection\n";
+        if (!baudRateValid) errorMsg += "- Invalid baud rate selection\n";
+
         ErrorDialog::showError(this, ErrorDialog::DataValidationError, errorMsg);
         return;
     }
@@ -438,7 +405,7 @@ void AddDeviceDialog::accept()
     // 最终验证 - 实际尝试打开端口
     QString selectedPort = ui->comboBox->currentData().toString();
     if (selectedPort.isEmpty()) {
-        ErrorDialog::showError(this, ErrorDialog::DataValidationError, "请选择有效的串口");
+        ErrorDialog::showError(this, ErrorDialog::DataValidationError, "Please select a valid serial port");
         return;
     }
     
@@ -446,31 +413,31 @@ void AddDeviceDialog::accept()
     if (isPortOccupiedByApp(selectedPort)) {
         QString deviceName = getDeviceNameByPort(selectedPort);
         ErrorDialog::showError(this, ErrorDialog::HardwareError, 
-                             QString("端口 %1 已被设备 '%2' 占用").arg(selectedPort, deviceName));
+                             QString("the port %1 is occupied by device '%2'").arg(selectedPort, deviceName));
         refreshPortList(); // 刷新端口列表
         return;
     }
     
     // 实际测试端口可用性
-    try {
-        SerialInterface testInterface;
-        if (!testInterface.open(selectedPort.toStdString(), ui->comboBox_2->currentText().toInt())) {
-            ErrorDialog::showError(this, ErrorDialog::HardwareError, 
-                                 QString("无法打开端口 %1，可能被其他程序占用").arg(selectedPort));
-            refreshPortList(); // 刷新端口列表
-            return;
-        }
+//    try {
+//        SerialInterface testInterface;
+//        if (!testInterface.open(selectedPort.toStdString(), ui->comboBox_2->currentText().toInt())) {
+//            ErrorDialog::showError(this, ErrorDialog::HardwareError, 
+//                                 QString("the port %1 is occupied by another program or inaccessible").arg(selectedPort));
+//            refreshPortList(); 
+//            return;
+//        }
         // 立即关闭测试连接
-        testInterface.close();
-    } catch (const std::exception& e) {
-        ErrorDialog::showError(this, ErrorDialog::HardwareError, 
-                             QString("端口测试失败: %1").arg(e.what()));
-        return;
-    } catch (...) {
-        ErrorDialog::showError(this, ErrorDialog::HardwareError, "端口测试失败: 未知错误");
-        return;
-    }
-    
+//        testInterface.close();
+//    } catch (const std::exception& e) {
+//        ErrorDialog::showError(this, ErrorDialog::HardwareError, 
+//                             QString("the port test failed: %1").arg(e.what()));
+ //       return;
+//    } catch (...) {
+//        ErrorDialog::showError(this, ErrorDialog::HardwareError, "the port test failed: unknown error");
+//       return;
+//    }
+
     // 停止定时器
     if (refreshTimer && refreshTimer->isActive()) {
         refreshTimer->stop();
@@ -499,5 +466,5 @@ void AddDeviceDialog::reject()
 
 void AddDeviceDialog::logUserOperation(const QString& operation)
 {
-    Logger::getInstance().logOperation("AddDeviceDialog", operation.toStdString());
+    Logger::getInstance().info("AddDeviceDialog", operation.toStdString());
 }
