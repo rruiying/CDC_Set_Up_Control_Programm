@@ -119,3 +119,6 @@ x86/
 
 # Temporary files
 *.temp
+
+#data files
+*.csv
